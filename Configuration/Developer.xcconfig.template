@@ -28,3 +28,5 @@ CODE_SIGN_IDENTITY[sdk=macosx*] = Apple Development
 // Base URL of your AssppWeb deployment (HTTPS only). Example:
 // ASSPP_WEB_BASE_URL = https://asspp.example.com
 ASSPP_WEB_BASE_URL =
+// Optional X-Access-Token when AssppWeb ACCESS_PASSWORD is enabled.
+ASSPP_WEB_ACCESS_TOKEN =

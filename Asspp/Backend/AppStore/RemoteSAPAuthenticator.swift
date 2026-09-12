@@ -44,6 +44,12 @@ enum RemoteSAPAuthenticator {
         return url
     }
 
+    private static var accessToken: String? {
+        let value = UserDefaults.standard.string(forKey: "AssppWebAccessToken")
+            ?? Bundle.main.object(forInfoDictionaryKey: "ASSPP_WEB_ACCESS_TOKEN") as? String
+        return value?.isEmpty == false ? value : nil
+    }
+
     private struct Request: Encodable {
         let email: String
         let password: String
@@ -80,6 +86,7 @@ enum RemoteSAPAuthenticator {
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.setValue("Asspp/4.2", forHTTPHeaderField: "User-Agent")
+        if let accessToken { request.setValue(accessToken, forHTTPHeaderField: "X-Access-Token") }
         request.httpBody = try JSONEncoder().encode(Request(
             email: email,
             password: password,

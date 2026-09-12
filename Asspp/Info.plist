@@ -5,6 +5,8 @@
 	<!-- Optional SAP authentication bridge. Leave empty to use native auth. -->
 	<key>ASSPP_WEB_BASE_URL</key>
 	<string>$(ASSPP_WEB_BASE_URL)</string>
+	<key>ASSPP_WEB_ACCESS_TOKEN</key>
+	<string>$(ASSPP_WEB_ACCESS_TOKEN)</string>
 	<key>UIBackgroundModes</key>
 	<array>
 		<string>audio</string>
