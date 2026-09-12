@@ -50,6 +50,13 @@ Fork this repository to automatically build and sign the app with your own devel
 - **macOS**: macOS 15.0 or later.
 - **Apple ID**: Required to communicate with App Store APIs.
 
+### AssppWeb SAP authentication (optional)
+
+Apple's current login flow requires the server-side SAP signer used by ipatool.
+Set `ASSPP_WEB_BASE_URL` in `Configuration/Developer.xcconfig` to your HTTPS
+AssppWeb deployment. The App uses that service only for authentication; account
+cookies remain local and lookup/IPA downloads continue directly from the App.
+
 ## 🚨 Special Notice
 
 Asspp utilizes the same underlying communication protocol as `ipatool`. According to community speculation (unverified), previous outages of this protocol were likely caused by:

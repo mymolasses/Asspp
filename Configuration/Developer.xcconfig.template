@@ -24,3 +24,7 @@ CODE_SIGN_IDENTITY[sdk=macosx*] = Apple Development
 
 // Override bundle identifier for personal builds
 // PRODUCT_BUNDLE_IDENTIFIER = com.yourcompany.Asspp
+
+// Base URL of your AssppWeb deployment (HTTPS only). Example:
+// ASSPP_WEB_BASE_URL = https://asspp.example.com
+ASSPP_WEB_BASE_URL =
