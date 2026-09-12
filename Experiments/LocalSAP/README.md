@@ -1,7 +1,12 @@
 # Local SAP feasibility experiment
 
-The 4.2.2.2 release uses the remote authentication settings. This branch probes
+The 4.2.x releases use the remote authentication settings. This 4.3 branch probes
 a local alternative, without changing the released login implementation.
+
+Shared fixes from 4.2.2.3 are merged here: storefront suffix parsing, token
+rotation with a verification-code field, all-account download selection, and
+version display from build settings. Version 4.3 identifies development of the
+local implementation; it does not mean local SAP authentication is complete.
 
 ipatool currently dynamically loads a desktop Unicorn library and executes an
 x86-64 Apple guest. An iOS static Go archive alone does not replace that loader
