@@ -80,7 +80,9 @@ public enum Configuration {
     }
 
     public static func countryCode(for storeId: String) -> String? {
-        storeFrontValues.first(where: { $0.value == storeId })?.key
+        let identifier = storeId.trimmingCharacters(in: .whitespacesAndNewlines)
+            .split(whereSeparator: { $0 == "-" || $0 == "," }).first.map(String.init) ?? ""
+        return storeFrontValues.first(where: { $0.value == identifier })?.key
     }
 
     public static func accountPath(for email: String) -> URL {

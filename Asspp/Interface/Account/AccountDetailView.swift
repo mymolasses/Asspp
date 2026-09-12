@@ -20,6 +20,8 @@ struct AccountDetailView: View {
     }
 
     @State private var rotatingHint = ""
+    @State private var verificationCode = ""
+    @State private var needsVerificationCode = false
 
     var body: some View {
         Form {
@@ -60,18 +62,30 @@ struct AccountDetailView: View {
                 SecureField(text: .constant(account?.account.passwordToken ?? "")) {
                     Text("Password Token")
                 }
+                if needsVerificationCode {
+                    TextField("2FA Code", text: $verificationCode)
+                        .autocorrectionDisabled()
+                        #if os(iOS)
+                        .keyboardType(.numberPad)
+                        .textContentType(.oneTimeCode)
+                        #endif
+                }
                 AsyncButton {
                     do {
-                        try await vm.rotate(id: account?.id ?? "")
+                        try await vm.rotate(id: accountId, code: verificationCode)
                         rotatingHint = String(localized: "Success")
+                        verificationCode = ""
+                        needsVerificationCode = false
                     } catch {
                         rotatingHint = error.localizedDescription
+                        needsVerificationCode = true
                         throw error
                     }
                 } label: {
                     Text("Rotate Token")
                 }
                 .disabledWhenLoading()
+                .disabled(needsVerificationCode && verificationCode.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
             } header: {
                 Text("Password Token")
             } footer: {

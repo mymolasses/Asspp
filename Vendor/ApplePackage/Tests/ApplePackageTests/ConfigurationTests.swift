@@ -56,4 +56,11 @@ final class ApplePackageConfigurationTests: XCTestCase {
         let countryCode = Configuration.countryCode(for: "999999")
         XCTAssertNil(countryCode)
     }
+
+    func testCountryCodeWithStorefrontSuffix() {
+        XCTAssertEqual(Configuration.countryCode(for: "143463-2,34"), Configuration.countryCode(for: "143463"))
+        XCTAssertNotNil(Configuration.countryCode(for: "143463-2,34"))
+        XCTAssertEqual(Configuration.countryCode(for: " 143441-1,29 "), "US")
+        XCTAssertNil(Configuration.countryCode(for: "unknown-2,34"))
+    }
 }
