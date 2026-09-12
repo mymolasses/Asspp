@@ -160,7 +160,7 @@ public extension [Cookie] {
     }
 
     private func matchesDomain(cookieDomain: String, requestHost: String) -> Bool {
-        let normalizedCookieDomain = cookieDomain.lowercased()
+        let normalizedCookieDomain = cookieDomain.lowercased().trimmingCharacters(in: CharacterSet(charactersIn: "."))
         let normalizedRequestHost = requestHost.lowercased()
 
         return false

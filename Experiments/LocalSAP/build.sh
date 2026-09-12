@@ -10,6 +10,8 @@ git clone --quiet https://github.com/Naville/unicorn.git "$stage/unicorn"
 git -C "$stage/unicorn" checkout --quiet 53471ef9cf480fab094bf13db3e5d2f9e2c30dc5
 # Stage only SAP packages: no desktop keychain, CLI or subprocess dependencies.
 mkdir -p "$stage/module/internal/sap" "$stage/module/bridge"
+mkdir -p "$stage/module/pkg"
+cp -R "$stage/ipatool/pkg/http" "$stage/module/pkg/"
 cp "$stage/ipatool/go.mod" "$stage/ipatool/go.sum" "$stage/module/"
 for entry in "$stage/ipatool/internal/sap/"*; do
     [ "$(basename "$entry")" = unicorn ] && continue

@@ -25,7 +25,7 @@ public enum Authenticator {
         cookies: [Cookie] = [],
         actionSignature: ((Data, Bag.BagOutput, String) async throws -> String)? = nil
     ) async throws -> Account {
-        let deviceIdentifier = Configuration.deviceIdentifier
+        let deviceIdentifier = Configuration.deviceIdentifier.uppercased()
 
         let bagOutput = try await Bag.fetchBag()
 
@@ -40,20 +40,21 @@ public enum Authenticator {
         var redirectAttempt = 0
         var lastError: Error?
 
-        while currentAttempt <= 2, redirectAttempt <= 3 {
+        while currentAttempt <= 3, redirectAttempt <= 3 {
             defer { currentAttempt += 1 }
             do {
+                let data = try authenticationBody(email: email, password: password, code: code,
+                                                  deviceIdentifier: deviceIdentifier, attempt: redirectAttempt > 0 ? 1 : currentAttempt)
                 var request = try makeRequest(
                     endpoint: requestEndpoint,
                     email: email,
                     password: password,
                     code: code,
                     cookies: cookies,
-                    deviceIdentifier: deviceIdentifier
+                    deviceIdentifier: deviceIdentifier,
+                    body: data
                 )
                 if let actionSignature {
-                    let data = try authenticationBody(email: email, password: password, code: code, deviceIdentifier: deviceIdentifier)
-                    request.body = .data(data)
                     request.headers.add(name: "X-Apple-ActionSignature", value: try await actionSignature(data, bagOutput, deviceIdentifier))
                 }
                 let response = try await client.execute(request: request).get()
@@ -70,6 +71,9 @@ public enum Authenticator {
                 case let .success(account):
                     return account
                 case let .redirect(uRL):
+                    guard uRL.scheme == "https", let host = uRL.host?.lowercased(), host.hasSuffix(".itunes.apple.com") else {
+                        try ensureFailed("Apple authentication returned an untrusted redirect")
+                    }
                     requestEndpoint = uRL
                     currentAttempt -= 1 // allow one more attempt when redirect
                     redirectAttempt += 1
@@ -78,6 +82,7 @@ public enum Authenticator {
                     currentAttempt += 65535 // stop attempts
                     try ensureFailed(Strings.authRequiresVerificationCode)
                 case .retry:
+                    try await Task.sleep(nanoseconds: 250_000_000)
                     continue
                 case let .failure(string):
                     try ensureFailed("\(Strings.authFailed): \(string)")
@@ -120,9 +125,9 @@ public enum Authenticator {
         password: String,
         code: String,
         cookies: [Cookie],
-        deviceIdentifier: String
+        deviceIdentifier: String,
+        body data: Data
     ) throws -> HTTPClient.Request {
-        let data = try authenticationBody(email: email, password: password, code: code, deviceIdentifier: deviceIdentifier)
         var headers: [(String, String)] = [
             ("User-Agent", Configuration.userAgent),
             ("Content-Type", "application/x-apple-plist"),
@@ -133,10 +138,10 @@ public enum Authenticator {
         return try .init(url: endpoint.absoluteString, method: .POST, headers: .init(headers), body: .data(data))
     }
 
-    private static func authenticationBody(email: String, password: String, code: String, deviceIdentifier: String) throws -> Data {
+    private static func authenticationBody(email: String, password: String, code: String, deviceIdentifier: String, attempt: Int) throws -> Data {
         let parameters: [String: String] = [
             "appleId": email,
-            "attempt": "\(code.isEmpty ? "4" : "2")",
+            "attempt": "\(attempt)",
             "guid": deviceIdentifier,
             "password": "\(password)\(code)",
             "rmp": "0",
@@ -165,6 +170,9 @@ public enum Authenticator {
         )
 
         cookies.mergeCookies(response.cookies)
+        if [204, 429, 500, 502, 503, 504].contains(Int(response.status.code)) {
+            return .retry
+        }
 
         let readStoreFrontValue = response
             .headers["x-set-apple-store-front"]
