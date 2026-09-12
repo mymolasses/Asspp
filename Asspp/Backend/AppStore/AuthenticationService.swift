@@ -39,7 +39,7 @@ extension AppStore {
 
     @MainActor
     @discardableResult
-    func rotate(id: UserAccount.ID) async throws -> UserAccount? {
+    func rotate(id: UserAccount.ID, code: String = "") async throws -> UserAccount? {
         logger.info("starting account rotation for user id: \(id)")
         guard let account = accounts.first(where: { $0.id == id }) else {
             logger.error("account not found for rotation, id: \(id)")
@@ -51,14 +51,14 @@ extension AppStore {
                 newAppleAccount = try await RemoteSAPAuthenticator.authenticate(
                     email: account.account.email,
                     password: account.account.password,
-                    code: "",
+                    code: code.filter { !$0.isWhitespace },
                     cookies: account.account.cookie
                 )
             } else {
                 newAppleAccount = try await ApplePackage.Authenticator.authenticate(
                     email: account.account.email,
                     password: account.account.password,
-                    code: "",
+                    code: code.filter { !$0.isWhitespace },
                     cookies: account.account.cookie
                 )
             }

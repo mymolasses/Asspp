@@ -27,7 +27,7 @@ struct ProductView: View {
     @ObservedObject private var dvm = Downloads.this
 
     var eligibleAccounts: [AppStore.UserAccount] {
-        vm.eligibleAccounts(for: region)
+        vm.accounts
     }
 
     var account: AppStore.UserAccount? {
@@ -74,7 +74,9 @@ struct ProductView: View {
         }
         .formStyle(.grouped)
         .onAppear {
-            selection = eligibleAccounts.first?.id ?? .init()
+            if account == nil {
+                selection = vm.eligibleAccounts(for: region).first?.id ?? eligibleAccounts.first?.id ?? .init()
+            }
         }
         .navigationDestination(for: PackageManifest.self) { manifest in
             PackageView(pkg: manifest)
@@ -200,7 +202,7 @@ struct ProductView: View {
             Picker("Account", selection: $selection) {
                 ForEach(eligibleAccounts) { account in
                     Text(account.account.email)
-                        .id(account.id)
+                        .tag(account.id)
                 }
             }
             .pickerStyle(.menu)
