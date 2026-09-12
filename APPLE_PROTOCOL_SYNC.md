@@ -1,7 +1,7 @@
 # Apple protocol sync
 
-This fork pins `mymolasses/ApplePackage` at revision
-`91f10e4efb0e126dcae58868fa082ad14c302f7c`.
+This fork vendors its patched ApplePackage dependency under
+`Vendor/ApplePackage`. No separate ApplePackage fork is required.
 
 The dependency carries the Apple protocol fixes already validated in
 `mymolasses/AssppWeb`:

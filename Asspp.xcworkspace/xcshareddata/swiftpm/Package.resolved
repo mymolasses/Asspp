@@ -11,14 +11,6 @@
       }
     },
     {
-      "identity" : "applepackage",
-      "kind" : "remoteSourceControl",
-      "location" : "https://github.com/mymolasses/ApplePackage",
-      "state" : {
-        "revision" : "91f10e4efb0e126dcae58868fa082ad14c302f7c"
-      }
-    },
-    {
       "identity" : "async-http-client",
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/swift-server/async-http-client.git",
