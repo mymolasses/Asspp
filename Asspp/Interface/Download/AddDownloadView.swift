@@ -18,8 +18,8 @@ struct AddDownloadView: View {
 
     @FocusState private var searchKeyFocused
 
-    @State private var avm = AppStore.this
-    @State private var dvm = Downloads.this
+    @ObservedObject private var avm = AppStore.this
+    @ObservedObject private var dvm = Downloads.this
 
     @Environment(\.dismiss) private var dismiss
 

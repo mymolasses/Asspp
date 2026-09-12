@@ -6,12 +6,11 @@
 //
 
 import ApplePackage
+import Combine
 import Foundation
 
-@Observable
 @MainActor
-class AppStore {
-    @ObservationIgnored
+class AppStore: ObservableObject {
     private var _accounts = Persist<[UserAccount]>(
         key: "Accounts",
         defaultValue: [],
@@ -20,17 +19,14 @@ class AppStore {
 
     var accounts: [UserAccount] {
         get {
-            access(keyPath: \.accounts)
             return _accounts.wrappedValue
         }
         set {
-            withMutation(keyPath: \.accounts) {
-                _accounts.wrappedValue = newValue
-            }
+            objectWillChange.send()
+            _accounts.wrappedValue = newValue
         }
     }
 
-    @ObservationIgnored
     private var _deviceIdentifier = Persist<String>(
         key: "DeviceIdentifier",
         defaultValue: "",
@@ -39,29 +35,24 @@ class AppStore {
 
     var deviceIdentifier: String {
         get {
-            access(keyPath: \.deviceIdentifier)
             return _deviceIdentifier.wrappedValue
         }
         set {
-            withMutation(keyPath: \.deviceIdentifier) {
-                _deviceIdentifier.wrappedValue = newValue
-            }
+            objectWillChange.send()
+            _deviceIdentifier.wrappedValue = newValue
             ApplePackage.Configuration.deviceIdentifier = newValue
         }
     }
 
-    @ObservationIgnored
     private var _demoMode = Persist<Bool>(key: "DemoMode", defaultValue: false)
 
     var demoMode: Bool {
         get {
-            access(keyPath: \.demoMode)
             return _demoMode.wrappedValue
         }
         set {
-            withMutation(keyPath: \.demoMode) {
-                _demoMode.wrappedValue = newValue
-            }
+            objectWillChange.send()
+            _demoMode.wrappedValue = newValue
         }
     }
 

@@ -14,10 +14,9 @@ import SwiftUI
 /// clears it — so the one-shot survives the view being recreated when the user
 /// switches sidebar sections.
 @MainActor
-@Observable
-final class SearchFieldFocus {
+final class SearchFieldFocus: ObservableObject {
     static let shared = SearchFieldFocus()
-    var pending = false
+    @Published var pending = false
     func requestFocus() { pending = true }
 }
 
@@ -25,7 +24,7 @@ struct SearchView: View {
     @AppStorage("searchKey") var searchKey = ""
     @AppStorage("searchRegion") var searchRegion = "US"
     @FocusState var searchKeyFocused
-    @State private var searchFocus = SearchFieldFocus.shared
+    @ObservedObject private var searchFocus = SearchFieldFocus.shared
     @State private var searchType = EntityType.iPhone
 
     @State private var searching = false
@@ -40,7 +39,7 @@ struct SearchView: View {
     #endif
 
     @State private var navigationPath = NavigationPath()
-    @State private var vm = AppStore.this
+    @ObservedObject private var vm = AppStore.this
     @Environment(\.horizontalSizeClass) var horizontalSizeClass
     var possibleRegion: Set<String> {
         vm.possibleRegions
@@ -70,7 +69,7 @@ struct SearchView: View {
         } label: {
             Label("Type", systemImage: searchType.iconName)
         }
-        .onChange(of: searchType) { _, _ in
+        .onChange(of: searchType) { _ in
             searchResult = []
         }
     }
@@ -105,7 +104,7 @@ struct SearchView: View {
         } label: {
             Label(searchRegion, systemImage: "globe")
         }
-        .onChange(of: searchRegion) { _, _ in
+        .onChange(of: searchRegion) { _ in
             searchResult = []
         }
     }
@@ -159,7 +158,7 @@ struct SearchView: View {
         }
         .animation(.spring, value: searchResult)
         .onAppear { consumePendingFocus() }
-        .onChange(of: searchFocus.pending) { _, isPending in
+        .onChange(of: searchFocus.pending) { isPending in
             if isPending { consumePendingFocus() }
         }
     }

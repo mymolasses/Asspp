@@ -9,7 +9,7 @@ import ApplePackage
 import SwiftUI
 
 struct AccountView: View {
-    @State private var vm = AppStore.this
+    @ObservedObject private var vm = AppStore.this
     @State private var addAccount = false
     @State private var selectedID: AppStore.UserAccount.ID?
     @State private var navigationPath = NavigationPath()
@@ -78,7 +78,7 @@ struct AccountView: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .overlay {
                 if vm.accounts.isEmpty {
-                    ContentUnavailableView(
+                    UnavailableView(
                         label: {
                             Label("No Accounts", systemImage: "person.crop.circle.badge.questionmark")
                         },
@@ -121,7 +121,7 @@ struct AccountView: View {
             NavigationStack(path: $navigationPath) {
                 Group {
                     if vm.accounts.isEmpty {
-                        ContentUnavailableView(
+                        UnavailableView(
                             label: {
                                 Label("No Accounts", systemImage: "person.crop.circle.badge.questionmark")
                             },

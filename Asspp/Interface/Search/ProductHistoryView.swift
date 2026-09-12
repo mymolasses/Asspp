@@ -9,7 +9,7 @@ import ApplePackage
 import SwiftUI
 
 struct ProductHistoryView: View {
-    @State var vm: AppPackageArchive
+    @ObservedObject var vm: AppPackageArchive
     @State private var showErrorAlert = false
     @Environment(\.dismiss) var dismiss
 
@@ -110,7 +110,7 @@ struct ProductHistoryView: View {
         } message: {
             Text(vm.error ?? String(localized: "Unknown Error"))
         }
-        .onChange(of: vm.error) { _, newValue in
+        .onChange(of: vm.error) { newValue in
             showErrorAlert = newValue != nil
         }
         .onAppear {

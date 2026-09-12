@@ -6,6 +6,7 @@
 //
 
 import ApplePackage
+import Combine
 import Foundation
 
 private let packagesDir = {
@@ -14,20 +15,19 @@ private let packagesDir = {
     return ret
 }()
 
-@Observable
-class PackageManifest: Identifiable, Codable, Hashable, Equatable {
-    @ObservationIgnored private(set) var id: UUID = .init()
+class PackageManifest: ObservableObject, Identifiable, Codable, Hashable, Equatable {
+    private(set) var id: UUID = .init()
 
-    @ObservationIgnored private(set) var account: AppStore.UserAccount
-    @ObservationIgnored private(set) var package: AppStore.AppPackage
+    private(set) var account: AppStore.UserAccount
+    private(set) var package: AppStore.AppPackage
 
-    @ObservationIgnored private(set) var url: URL
-    @ObservationIgnored private(set) var signatures: [ApplePackage.Sinf]
-    @ObservationIgnored private(set) var iTunesMetadata: Data
+    private(set) var url: URL
+    private(set) var signatures: [ApplePackage.Sinf]
+    private(set) var iTunesMetadata: Data
 
-    @ObservationIgnored private(set) var creation: Date
+    private(set) var creation: Date
 
-    var state: PackageState = .init()
+    @Published var state: PackageState = .init()
 
     var targetLocation: URL {
         packagesDir

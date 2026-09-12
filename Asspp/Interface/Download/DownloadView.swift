@@ -8,7 +8,7 @@
 import SwiftUI
 
 struct DownloadView: View {
-    @State private var vm = Downloads.this
+    @ObservedObject private var vm = Downloads.this
 
     var body: some View {
         NavigationStack {
@@ -20,7 +20,7 @@ struct DownloadView: View {
     private var content: some View {
         Group {
             if vm.manifests.isEmpty {
-                ContentUnavailableView(
+                UnavailableView(
                     label: {
                         Label("No Downloads", systemImage: "arrow.down.circle")
                     },
@@ -60,7 +60,7 @@ struct DownloadView: View {
 
 private struct PackageManifestRow: View {
     let manifest: PackageManifest
-    @State private var vm = Downloads.this
+    @ObservedObject private var vm = Downloads.this
 
     var body: some View {
         NavigationLink(value: manifest) {
