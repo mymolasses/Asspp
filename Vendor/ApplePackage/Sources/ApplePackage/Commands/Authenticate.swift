@@ -65,7 +65,8 @@ public enum Authenticator {
                     code: code,
                     cookies: &cookies,
                     storeFront: &storeFront,
-                    pod: &pod
+                    pod: &pod,
+                    attempt: currentAttempt
                 )
                 switch result {
                 case let .success(account):
@@ -130,7 +131,7 @@ public enum Authenticator {
     ) throws -> HTTPClient.Request {
         var headers: [(String, String)] = [
             ("User-Agent", Configuration.userAgent),
-            ("Content-Type", "application/x-apple-plist"),
+            ("Content-Type", "application/x-www-form-urlencoded"),
         ]
         for item in cookies.buildCookieHeader(endpoint) {
             headers.append(item)
@@ -161,7 +162,8 @@ public enum Authenticator {
         code: String,
         cookies: inout [Cookie],
         storeFront: inout String,
-        pod: inout String?
+        pod: inout String?,
+        attempt: Int
     ) throws -> LoginResponse {
         APLogger.logResponse(
             status: response.status.code,
@@ -211,6 +213,9 @@ public enum Authenticator {
             format: nil
         )
         let dic = try (listItem as? [String: Any]).get(Strings.responseNotDictionary)
+        if attempt == 1, dic["failureType"] as? String == "-5000" {
+            return .retry
+        }
 
         if let failureType = dic["failureType"] as? String,
            failureType.isEmpty,

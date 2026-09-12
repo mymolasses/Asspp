@@ -18,7 +18,20 @@ runs an x86-64 instruction smoke test on macOS, and cross-compiles an arm64
 iOS 16 static XCFramework. The fork's translate-all.c uses RW rather than RWX
 code buffers in interpreter mode. Source: https://github.com/Naville/unicorn/tree/53471ef9cf480fab094bf13db3e5d2f9e2c30dc5
 
-A passing build is only the first gate. Remaining work includes static C bindings
-instead of purego/dlopen, callback integration, sandbox-local SAP assets,
-protocol/signing tests, then execution and login on a physical iOS 16 device.
-No Apple credentials are used by this probe. This is not a working local signer.
+The Local SAP iOS App workflow now builds the static cgo adapter and exported
+signing bridge, tests the machine and real Apple SAP handshake with dummy data,
+cross-compiles both libraries, and links them into the iOS application.
+AuthenticationService on this branch calls LocalSAPAuthenticator, never the
+remote service. First use downloads hash-validated SAP assets directly from
+Apple into the app sandbox's cache. No user credentials are used by CI.
+
+Build locally on macOS with Go 1.25+ and Xcode:
+
+```sh
+bash Experiments/LocalSAP/build.sh /absolute/path/to/sap-libs
+```
+
+Set LOCAL_SAP_LIBRARY_DIR to that directory in Xcode build settings, or export
+it when invoking the CI build script. This branch currently builds iOS arm64
+only. A successful CI build still requires physical-device login/2FA/download
+verification before treating the local implementation as production-ready.
