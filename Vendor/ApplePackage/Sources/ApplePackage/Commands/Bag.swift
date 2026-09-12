@@ -12,6 +12,9 @@ public enum Bag {
     public struct BagOutput {
         public var authEndpoint: URL
         public var updateProductEndpoint: URL?
+        public var sapSetup: String? = nil
+        public var sapCertificate: String? = nil
+        public var sapVersion: UInt32? = nil
     }
 
     private static let defaultAuthEndpoint = "https://auth.itunes.apple.com/auth/v1/native/fast/"
@@ -85,7 +88,12 @@ public enum Bag {
         }
 
         APLogger.info("bag: auth endpoint resolved to \(authURL)")
-        return BagOutput(authEndpoint: authURL, updateProductEndpoint: updateProductURL)
+        var output = BagOutput(authEndpoint: authURL, updateProductEndpoint: updateProductURL)
+        output.sapSetup = urlBag["sign-sap-setup"] as? String
+        output.sapCertificate = urlBag["sign-sap-setup-cert"] as? String
+        if let value = urlBag["sign-sap-version"] as? String { output.sapVersion = UInt32(value) }
+        if let value = urlBag["sign-sap-version"] as? NSNumber { output.sapVersion = value.uint32Value }
+        return output
     }
 
     /// The bag advertises the native auth endpoint without the `/fast/` sub-path

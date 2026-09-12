@@ -39,7 +39,7 @@ struct SettingView: View {
     private var formContent: some View {
         Form {
             Section {
-                NavigationLink("远端登录服务器") { RemoteServerView() }
+                Text("本地 SAP 登录")
                 Text(version)
             }
             Section {

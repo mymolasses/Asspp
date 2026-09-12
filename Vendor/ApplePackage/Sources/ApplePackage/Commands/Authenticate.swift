@@ -22,7 +22,8 @@ public enum Authenticator {
         email: String,
         password: String,
         code: String = "",
-        cookies: [Cookie] = []
+        cookies: [Cookie] = [],
+        actionSignature: ((Data, Bag.BagOutput, String) async throws -> String)? = nil
     ) async throws -> Account {
         let deviceIdentifier = Configuration.deviceIdentifier
 
@@ -42,7 +43,7 @@ public enum Authenticator {
         while currentAttempt <= 2, redirectAttempt <= 3 {
             defer { currentAttempt += 1 }
             do {
-                let request = try makeRequest(
+                var request = try makeRequest(
                     endpoint: requestEndpoint,
                     email: email,
                     password: password,
@@ -50,6 +51,11 @@ public enum Authenticator {
                     cookies: cookies,
                     deviceIdentifier: deviceIdentifier
                 )
+                if let actionSignature {
+                    let data = try authenticationBody(email: email, password: password, code: code, deviceIdentifier: deviceIdentifier)
+                    request.body = .data(data)
+                    request.headers.add(name: "X-Apple-ActionSignature", value: try await actionSignature(data, bagOutput, deviceIdentifier))
+                }
                 let response = try await client.execute(request: request).get()
                 let result = try parseResponse(
                     response,
@@ -116,6 +122,18 @@ public enum Authenticator {
         cookies: [Cookie],
         deviceIdentifier: String
     ) throws -> HTTPClient.Request {
+        let data = try authenticationBody(email: email, password: password, code: code, deviceIdentifier: deviceIdentifier)
+        var headers: [(String, String)] = [
+            ("User-Agent", Configuration.userAgent),
+            ("Content-Type", "application/x-apple-plist"),
+        ]
+        for item in cookies.buildCookieHeader(endpoint) {
+            headers.append(item)
+        }
+        return try .init(url: endpoint.absoluteString, method: .POST, headers: .init(headers), body: .data(data))
+    }
+
+    private static func authenticationBody(email: String, password: String, code: String, deviceIdentifier: String) throws -> Data {
         let parameters: [String: String] = [
             "appleId": email,
             "attempt": "\(code.isEmpty ? "4" : "2")",
@@ -124,24 +142,10 @@ public enum Authenticator {
             "rmp": "0",
             "why": "signIn",
         ]
-        let data = try PropertyListSerialization.data(
+        return try PropertyListSerialization.data(
             fromPropertyList: parameters,
             format: .xml,
             options: 0
-        )
-        var headers: [(String, String)] = [
-            ("User-Agent", Configuration.userAgent),
-            ("Content-Type", "application/x-apple-plist"),
-        ]
-        for item in cookies.buildCookieHeader(endpoint) {
-            headers.append(item)
-        }
-        APLogger.logRequest(method: "POST", url: endpoint.absoluteString, headers: headers)
-        return try .init(
-            url: endpoint.absoluteString,
-            method: .POST,
-            headers: .init(headers),
-            body: .data(data)
         )
     }
 

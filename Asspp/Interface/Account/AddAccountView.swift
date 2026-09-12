@@ -25,7 +25,7 @@ struct AddAccountView: View {
     var body: some View {
         Form {
             Section {
-                NavigationLink("远端登录服务器") { RemoteServerView() }
+                Text("本地登录：首次使用需从 Apple 下载并缓存签名运行时，可能需要数分钟。")
             }
             Section {
                 TextField("Email (Apple ID)", text: $email)

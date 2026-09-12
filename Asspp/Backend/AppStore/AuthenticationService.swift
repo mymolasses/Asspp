@@ -18,16 +18,9 @@ extension AppStore {
     func authenticate(email: String, password: String, code: String) async throws -> UserAccount {
         logger.info("starting authentication for user")
         do {
-            let appleAccount: ApplePackage.Account
-            if RemoteSAPAuthenticator.baseURL != nil {
-                appleAccount = try await RemoteSAPAuthenticator.authenticate(
-                    email: email, password: password, code: code, cookies: []
-                )
-            } else {
-                appleAccount = try await ApplePackage.Authenticator.authenticate(
-                    email: email, password: password, code: code, cookies: []
-                )
-            }
+            let appleAccount = try await LocalSAPAuthenticator.authenticate(
+                email: email, password: password, code: code, cookies: []
+            )
             let userAccount = save(email: email, account: appleAccount)
             logger.info("authentication successful for user")
             return userAccount
@@ -46,22 +39,12 @@ extension AppStore {
             throw AuthenticationError.accountNotFound
         }
         do {
-            let newAppleAccount: ApplePackage.Account
-            if RemoteSAPAuthenticator.baseURL != nil {
-                newAppleAccount = try await RemoteSAPAuthenticator.authenticate(
-                    email: account.account.email,
-                    password: account.account.password,
-                    code: code.filter { !$0.isWhitespace },
-                    cookies: account.account.cookie
-                )
-            } else {
-                newAppleAccount = try await ApplePackage.Authenticator.authenticate(
-                    email: account.account.email,
-                    password: account.account.password,
-                    code: code.filter { !$0.isWhitespace },
-                    cookies: account.account.cookie
-                )
-            }
+            let newAppleAccount = try await LocalSAPAuthenticator.authenticate(
+                email: account.account.email,
+                password: account.account.password,
+                code: code,
+                cookies: account.account.cookie
+            )
             let updatedAccount = save(email: account.account.email, account: newAppleAccount)
             logger.info("account rotation successful for user id: \(id)")
             return updatedAccount

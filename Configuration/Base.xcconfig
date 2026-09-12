@@ -16,6 +16,9 @@ MACOSX_DEPLOYMENT_TARGET = 15.0
 // MARK: - Swift
 
 SWIFT_VERSION = 5.0
+SWIFT_OBJC_BRIDGING_HEADER = $(SRCROOT)/Asspp/Backend/AppStore/LocalSAP.h
+LIBRARY_SEARCH_PATHS = $(inherited) $(LOCAL_SAP_LIBRARY_DIR)
+OTHER_LDFLAGS = $(inherited) -lasspp-sap -lunicorn -lresolv -framework Security -framework CoreFoundation
 
 // MARK: - Supported Platforms
 
