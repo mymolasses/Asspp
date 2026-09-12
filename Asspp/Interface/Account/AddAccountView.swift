@@ -25,6 +25,9 @@ struct AddAccountView: View {
     var body: some View {
         Form {
             Section {
+                NavigationLink("远端登录服务器") { RemoteServerView() }
+            }
+            Section {
                 TextField("Email (Apple ID)", text: $email)
                 #if os(iOS)
                     .disableAutocorrection(true)

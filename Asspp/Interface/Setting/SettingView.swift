@@ -39,6 +39,10 @@ struct SettingView: View {
     private var formContent: some View {
         Form {
             Section {
+                NavigationLink("远端登录服务器") { RemoteServerView() }
+                Text("版本 4.2.2.2")
+            }
+            Section {
                 Toggle("Demo Mode", isOn: $vm.demoMode)
                 Button("Delete All Downloads", role: .destructive) {
                     Downloads.this.removeAll()

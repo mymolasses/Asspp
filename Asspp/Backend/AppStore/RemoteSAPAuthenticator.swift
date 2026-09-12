@@ -9,6 +9,7 @@
 
 import ApplePackage
 import Foundation
+import KeychainAccess
 
 enum RemoteSAPAuthenticationError: LocalizedError {
     case notConfigured
@@ -33,19 +34,27 @@ enum RemoteSAPAuthenticationError: LocalizedError {
 }
 
 enum RemoteSAPAuthenticator {
+    static let tokenKeychain = Keychain(service: "wiki.qaq.Asspp.RemoteSAP")
+
+    static func validURL(_ value: String) -> URL? {
+        guard let url = URL(string: value.trimmingCharacters(in: .whitespacesAndNewlines)),
+              url.scheme == "https", url.host != nil, url.user == nil,
+              url.password == nil, url.query == nil, url.fragment == nil else { return nil }
+        return url
+    }
     /// Set this in UserDefaults (key: AssppWebBaseURL), or in Info.plist
     /// (ASSPP_WEB_BASE_URL). The value must be an HTTPS URL.
     static var baseURL: URL? {
         let value = UserDefaults.standard.string(forKey: "AssppWebBaseURL")
             ?? Bundle.main.object(forInfoDictionaryKey: "ASSPP_WEB_BASE_URL") as? String
-        guard let value, let url = URL(string: value), url.scheme == "https", url.host != nil else {
+        guard let value, let url = validURL(value) else {
             return nil
         }
         return url
     }
 
     private static var accessToken: String? {
-        let value = UserDefaults.standard.string(forKey: "AssppWebAccessToken")
+        let value = (try? tokenKeychain.get("accessToken")) ?? UserDefaults.standard.string(forKey: "AssppWebAccessToken")
             ?? Bundle.main.object(forInfoDictionaryKey: "ASSPP_WEB_ACCESS_TOKEN") as? String
         return value?.isEmpty == false ? value : nil
     }
@@ -70,7 +79,7 @@ enum RemoteSAPAuthenticator {
         let lastName: String
         let passwordToken: String
         let directoryServicesIdentifier: String
-        let cookie: [Cookie]
+        let cookies: [Cookie]?
         let pod: String?
     }
 
@@ -95,7 +104,13 @@ enum RemoteSAPAuthenticator {
             existingCookies: cookies
         ))
 
-        let (data, response) = try await URLSession.shared.data(for: request)
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.httpCookieStorage = nil
+        configuration.urlCache = nil
+        configuration.timeoutIntervalForRequest = 180
+        let session = URLSession(configuration: configuration, delegate: NoRedirect(), delegateQueue: nil)
+        defer { session.invalidateAndCancel() }
+        let (data, response) = try await session.data(for: request)
         guard let http = response as? HTTPURLResponse else {
             throw RemoteSAPAuthenticationError.invalidResponse
         }
@@ -120,8 +135,17 @@ enum RemoteSAPAuthenticator {
             lastName: result.lastName,
             passwordToken: result.passwordToken,
             directoryServicesIdentifier: result.directoryServicesIdentifier,
-            cookie: result.cookie,
+            cookie: result.cookies ?? [],
             pod: result.pod
         )
+    }
+
+    private final class NoRedirect: NSObject, URLSessionTaskDelegate {
+        func urlSession(_ session: URLSession, task: URLSessionTask,
+                        willPerformHTTPRedirection response: HTTPURLResponse,
+                        newRequest request: URLRequest,
+                        completionHandler: @escaping (URLRequest?) -> Void) {
+            completionHandler(nil)
+        }
     }
 }
