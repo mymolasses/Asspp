@@ -4,10 +4,12 @@
 //
 
 #if canImport(UIKit)
+    import Combine
     import UIKit
 
     class AppDelegate: NSObject, UIApplicationDelegate {
         var backgroundTaskIdentifier: UIBackgroundTaskIdentifier = .invalid
+        private var downloadCountObservation: AnyCancellable?
 
         func application(
             _: UIApplication,
@@ -21,15 +23,21 @@
 
         @MainActor
         private func observeDownloadCount() {
-            withObservationTracking {
-                let count = Downloads.this.runningTaskCount
-                UIApplication.shared.isIdleTimerDisabled = count > 0
-                BackgroundAudioPlayer.shared.setActive(count > 0)
-            } onChange: {
-                Task { @MainActor in
-                    self.observeDownloadCount()
+            updateDownloadActivity()
+            // Observation's withObservationTracking is iOS 17-only. Combine
+            // is available on iOS 16 and is already used by Downloads.
+            downloadCountObservation = Downloads.this.objectWillChange
+                .receive(on: DispatchQueue.main)
+                .sink { [weak self] _ in
+                    self?.updateDownloadActivity()
                 }
-            }
+        }
+
+        @MainActor
+        private func updateDownloadActivity() {
+            let count = Downloads.this.runningTaskCount
+            UIApplication.shared.isIdleTimerDisabled = count > 0
+            BackgroundAudioPlayer.shared.setActive(count > 0)
         }
 
         func applicationWillResignActive(_: UIApplication) {
