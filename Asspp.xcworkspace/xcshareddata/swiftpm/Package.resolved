@@ -13,10 +13,9 @@
     {
       "identity" : "applepackage",
       "kind" : "remoteSourceControl",
-      "location" : "https://github.com/Lakr233/ApplePackage",
+      "location" : "https://github.com/mymolasses/ApplePackage",
       "state" : {
-        "revision" : "28710fec47fa89dfdedf2bf47cc284a2334ddfdc",
-        "version" : "1.2.7"
+        "revision" : "91f10e4efb0e126dcae58868fa082ad14c302f7c"
       }
     },
     {

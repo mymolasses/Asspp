@@ -412,10 +412,10 @@
 		};
 		50ABFB102F48A6D60077DE1A /* XCRemoteSwiftPackageReference "ApplePackage" */ = {
 			isa = XCRemoteSwiftPackageReference;
-			repositoryURL = "https://github.com/Lakr233/ApplePackage";
+			repositoryURL = "https://github.com/mymolasses/ApplePackage";
 			requirement = {
-				kind = upToNextMajorVersion;
-				minimumVersion = 1.2.7;
+				kind = revision;
+				revision = 91f10e4efb0e126dcae58868fa082ad14c302f7c;
 			};
 		};
 		50ABFE1D2F48AAE50077DE1A /* XCRemoteSwiftPackageReference "ButtonKit" */ = {
