@@ -9,7 +9,7 @@ import ApplePackage
 import SwiftUI
 
 struct ProductHistoryView: View {
-    @ObservedObject var vm: AppPackageArchive
+    @StateObject var vm: AppPackageArchive
     @State private var showErrorAlert = false
     @Environment(\.dismiss) var dismiss
 
@@ -59,6 +59,7 @@ struct ProductHistoryView: View {
                     .smallControlSizeOnMac()
             }
             .opacity(vm.loading ? 1 : 0)
+            .allowsHitTesting(vm.loading)
             .animation(.default, value: vm.loading)
             .ignoresSafeArea(edges: [.vertical])
         }
@@ -114,7 +115,6 @@ struct ProductHistoryView: View {
             showErrorAlert = newValue != nil
         }
         .onAppear {
-            guard vm.versionItems.isEmpty else { return }
             vm.populateVersionIdentifiers {
                 await MainActor.run { vm.populateNextVersionItems() }
             }

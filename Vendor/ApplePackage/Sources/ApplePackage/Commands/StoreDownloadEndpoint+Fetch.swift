@@ -138,6 +138,7 @@ extension StoreDownloadEndpoint {
             "creditDisplay": "",
             "guid": guid,
             "salableAdamId": app.id,
+            "serialNumber": "0",
         ]
 
         if !externalVersionID.isEmpty {

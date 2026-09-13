@@ -38,12 +38,21 @@ public enum VersionLookup {
             try ensureFailed(Strings.missingBundleShortVersionString)
         }
 
-        guard let releaseDateString = metadata["releaseDate"] as? String,
-              let releaseDate = ISO8601DateFormatter().date(from: releaseDateString)
+        guard let releaseDate = parseReleaseDate(metadata["releaseDate"])
         else {
             try ensureFailed(Strings.missingOrInvalidReleaseDate)
         }
 
         return VersionMetadata(displayVersion: bundleShortVersionString, releaseDate: releaseDate)
+    }
+
+    static func parseReleaseDate(_ value: Any?) -> Date? {
+        // XML plist <date> becomes Foundation.Date, unlike <string> dates.
+        if let date = value as? Date { return date }
+        guard let string = value as? String else { return nil }
+        let formatter = ISO8601DateFormatter()
+        if let date = formatter.date(from: string) { return date }
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return formatter.date(from: string)
     }
 }

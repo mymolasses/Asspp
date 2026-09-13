@@ -13,12 +13,18 @@ public enum VersionFinder {
         account: inout Account,
         bundleIdentifier: String,
         entityType: EntityType? = nil,
-        externalVersionID: String? = nil
+        externalVersionID: String? = nil,
+        software: Software? = nil
     ) async throws -> [String] {
         guard let countryCode = Configuration.countryCode(for: account.store) else {
             try ensureFailed(Strings.unsupportedStoreIdentifier(account.store))
         }
-        let app = try await Lookup.lookup(bundleID: bundleIdentifier, countryCode: countryCode, entityType: entityType)
+        let app: Software
+        if let software {
+            app = software
+        } else {
+            app = try await Lookup.lookup(bundleID: bundleIdentifier, countryCode: countryCode, entityType: entityType)
+        }
         let resolvedExternalVersionID: String
         if let externalVersionID {
             resolvedExternalVersionID = externalVersionID
