@@ -80,9 +80,7 @@ class AppPackageArchive: ObservableObject {
                 self.versionItems = retained
                 self.attemptedVersionIDs = []
             } catch {
-                if case .licenseRequired = error as? ApplePackageError {
-                    self.shouldDismiss = true
-                }
+                logger.warning("history: list request failed: \(error.localizedDescription)")
                 self.error = error.localizedDescription
             }
             self.loading = false

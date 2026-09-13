@@ -102,7 +102,7 @@ struct SearchView: View {
                 .pickerStyle(.inline)
             }
         } label: {
-            Label(searchRegion, systemImage: "globe")
+            Label(AppStore.UserAccount.regionName(for: searchRegion), systemImage: "globe")
         }
         .onChange(of: searchRegion) { _ in
             searchResult = []
@@ -156,6 +156,9 @@ struct SearchView: View {
         .navigationDestination(for: PackageManifest.self) { manifest in
             PackageView(pkg: manifest)
         }
+        .navigationDestination(for: HistoryDestination.self) { destination in
+            ProductHistoryView(accountID: destination.accountID, region: destination.region, package: destination.package)
+        }
         .animation(.spring, value: searchResult)
         .onAppear { consumePendingFocus() }
         .onChange(of: searchFocus.pending) { isPending in
@@ -176,7 +179,7 @@ struct SearchView: View {
     func buildPickView(for keys: [String], @ViewBuilder label: () -> some View) -> some View {
         Picker(selection: $searchRegion) {
             ForEach(keys, id: \.self) { key in
-                Text("\(key) - \(ApplePackage.Configuration.storeFrontValues[key] ?? String(localized: "Unknown"))")
+                Text("\(AppStore.UserAccount.regionName(for: key)) · \(key)")
                     .tag(key)
             }
         } label: {
@@ -226,6 +229,17 @@ struct ProductDestination: Hashable {
     let region: String
 }
 
+/// Navigation identity must not depend on mutable account or package metadata.
+struct HistoryDestination: Hashable {
+    private let id = UUID()
+    let accountID: String
+    let region: String
+    let package: AppStore.AppPackage
+
+    static func == (lhs: Self, rhs: Self) -> Bool { lhs.id == rhs.id }
+    func hash(into hasher: inout Hasher) { hasher.combine(id) }
+}
+
 extension SearchView {
     var legacyContent: some View {
         content
@@ -234,7 +248,7 @@ extension SearchView {
                 .searchFocused($searchKeyFocused)
             #endif
             .onSubmit(of: .search) { search() }
-            .navigationTitle("Search - \(searchRegion.uppercased())")
+            .navigationTitle("搜索 - \(AppStore.UserAccount.regionName(for: searchRegion))")
             .toolbar { tools }
     }
 }
@@ -249,7 +263,7 @@ extension SearchView {
                 .searchable(text: $searchKey, placement: searchablePlacement, prompt: "Keyword")
                 .onSubmit(of: .search) { search() }
                 .toolbarVisibility(navigationBarVisibility, for: .navigationBar)
-                .navigationTitle(Text("Search - \(searchRegion.uppercased())"))
+                .navigationTitle(Text("搜索 - \(AppStore.UserAccount.regionName(for: searchRegion))"))
                 .toolbar {
                     if navigationBarVisibility != .hidden {
                         tools

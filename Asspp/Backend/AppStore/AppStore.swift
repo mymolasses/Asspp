@@ -11,6 +11,9 @@ import Foundation
 
 @MainActor
 class AppStore: ObservableObject {
+    @Published var refreshingAccountIDs: Set<String> = []
+    @Published var sessionErrors: [String: String] = [:]
+    @Published var verifiedAccountIDs: Set<String> = []
     private var _accounts = Persist<[UserAccount]>(
         key: "Accounts",
         defaultValue: [],
@@ -80,6 +83,8 @@ class AppStore: ObservableObject {
         let account = UserAccount(account: account)
         accounts = (accounts.filter { $0.account.email != email } + [account])
             .sorted { $0.account.email < $1.account.email }
+        sessionErrors.removeValue(forKey: account.id)
+        verifiedAccountIDs.insert(account.id)
         return account
     }
 
@@ -97,18 +102,43 @@ class AppStore: ObservableObject {
     }
 
     nonisolated func withAccount<T>(id: String, _ body: (inout UserAccount) async throws -> T) async throws -> T {
-        guard var account = await accounts.first(where: { $0.id == id }) else {
+        do {
+            return try await performWithAccount(id: id, body)
+        } catch ApplePackageError.sessionExpired {
+            // Retry only a definite authentication rejection, never a timeout
+            // or an ambiguous purchase result. SAP handles login locally.
+            _ = try await rotate(id: id)
+            return try await performWithAccount(id: id, body)
+        }
+    }
+
+    private nonisolated func performWithAccount<T>(id: String, _ body: (inout UserAccount) async throws -> T) async throws -> T {
+        guard let original = await accounts.first(where: { $0.id == id }) else {
             throw AuthenticationError.accountNotFound
         }
-        let result = try await body(&account)
+        var account = original
+        let result: Result<T, Error>
+        do { result = .success(try await body(&account)) }
+        catch { result = .failure(error) }
         let updatedAccount = account
-        // Re-resolve by id: the accounts array may have been mutated (added,
-        // removed, re-sorted) during the await, so the original index is stale.
         await MainActor.run {
-            if let idx = accounts.firstIndex(where: { $0.id == id }) {
+            // A slow request must not overwrite a newer login/session. Compare
+            // Apple Account, not UserAccount (whose equality is identity only).
+            guard let idx = accounts.firstIndex(where: { $0.id == id }),
+                  accounts[idx].account == original.account else { return }
+            if updatedAccount.account != original.account {
                 accounts[idx] = updatedAccount
             }
+            switch result {
+            case .success:
+                verifiedAccountIDs.insert(id)
+                sessionErrors.removeValue(forKey: id)
+            case .failure(ApplePackageError.sessionExpired):
+                verifiedAccountIDs.remove(id)
+                sessionErrors[id] = ApplePackageError.sessionExpired.localizedDescription
+            default: break
+            }
         }
-        return result
+        return try result.get()
     }
 }

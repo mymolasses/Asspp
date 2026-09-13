@@ -75,6 +75,7 @@ public enum Purchase {
             format: nil
         ) as? [String: Any]
         guard let dict = plist else { try ensureFailed(Strings.invalidResponse) }
+        try ApplePackageError.checkSession(dict)
 
         // Check if Apple requires the user to accept terms in a browser
         if let action = dict["action"] as? [String: Any],

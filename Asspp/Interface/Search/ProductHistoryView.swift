@@ -12,6 +12,8 @@ struct ProductHistoryView: View {
     @StateObject private var vm: AppPackageArchive
     @State private var started = false
     @State private var visibleCount = 50
+    @ObservedObject private var store = AppStore.this
+    @State private var showAccountDetails = false
 
     init(accountID: String, region: String, package: AppStore.AppPackage) {
         _vm = StateObject(wrappedValue: AppPackageArchive(accountID: accountID, region: region, package: package))
@@ -21,6 +23,15 @@ struct ProductHistoryView: View {
 
     var body: some View {
         Form {
+            if let id = vm.accountIdentifier {
+                if store.refreshingAccountIDs.contains(id) {
+                    Text("登录已失效，正在本地刷新令牌…")
+                }
+                if let error = store.sessionErrors[id] {
+                    Text(error).foregroundStyle(.red)
+                    Button("账号详情 / 输入验证码") { showAccountDetails = true }
+                }
+            }
             if vm.loading {
                 HStack {
                     ProgressView()
@@ -68,6 +79,12 @@ struct ProductHistoryView: View {
         }
         .formStyle(.grouped)
         .navigationTitle("Version History")
+        .sheet(isPresented: $showAccountDetails) {
+            NavigationStack {
+                AccountDetailView(accountId: vm.accountIdentifier ?? "")
+                    .toolbar { Button("完成") { showAccountDetails = false } }
+            }
+        }
         .toolbar {
             ToolbarItem(placement: toolbarPlacement) {
                 Menu {
@@ -118,6 +135,7 @@ struct ProductHistoryView: View {
         .task {
             guard !started else { return }
             started = true
+            logger.info("history: destination rendered")
             // Allow navigation to render before starting the request chain.
             do { try await Task.sleep(nanoseconds: 200_000_000) } catch { started = false; return }
             vm.populateVersionIdentifiers {

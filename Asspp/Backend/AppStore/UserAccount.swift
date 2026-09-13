@@ -16,6 +16,14 @@ extension AppStore {
 
         var account: ApplePackage.Account
 
+        var regionName: String {
+            Self.regionName(for: ApplePackage.Configuration.countryCode(for: account.store) ?? account.store)
+        }
+
+        static func regionName(for code: String) -> String {
+            Locale(identifier: "zh_Hans").localizedString(forRegionCode: code.uppercased()) ?? code
+        }
+
         init(account: ApplePackage.Account) {
             self.account = account
         }

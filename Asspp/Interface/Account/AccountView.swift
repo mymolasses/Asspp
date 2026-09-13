@@ -46,12 +46,12 @@ struct AccountView: View {
                 }
 
                 TableColumn("Region") { account in
-                    Text(account.account.store)
+                    Text(account.regionName)
                 }
                 .width(min: 40, ideal: 60, max: 80)
 
                 TableColumn("Storefront") { account in
-                    Text(ApplePackage.Configuration.countryCode(for: account.account.store) ?? String(localized: "Unknown"))
+                    Text(account.regionName)
                 }
                 .width(min: 60, ideal: 80, max: 120)
 
@@ -142,7 +142,7 @@ struct AccountView: View {
                                                 .redacted(reason: .placeholder, isEnabled: vm.demoMode)
                                             Spacer()
                                         }
-                                        .badge(ApplePackage.Configuration.countryCode(for: account.account.store) ?? account.account.store)
+                                        .badge(account.regionName)
                                     }
                                 }
                             } header: {

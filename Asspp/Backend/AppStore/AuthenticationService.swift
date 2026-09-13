@@ -33,6 +33,11 @@ extension AppStore {
     @MainActor
     @discardableResult
     func rotate(id: UserAccount.ID, code: String = "") async throws -> UserAccount? {
+        guard !refreshingAccountIDs.contains(id) else {
+            throw NSError(domain: "Asspp.Session", code: 1, userInfo: [NSLocalizedDescriptionKey: "此账号正在刷新令牌，请稍候再试。"])
+        }
+        refreshingAccountIDs.insert(id)
+        defer { refreshingAccountIDs.remove(id) }
         logger.info("starting account rotation for user id: \(id)")
         guard let account = accounts.first(where: { $0.id == id }) else {
             logger.error("account not found for rotation, id: \(id)")
@@ -49,6 +54,7 @@ extension AppStore {
             logger.info("account rotation successful for user id: \(id)")
             return updatedAccount
         } catch {
+            sessionErrors[id] = "刷新登录失败：\(error.localizedDescription)\n请打开账号详情重试，需要时输入 2FA 验证码。"
             logger.error("account rotation failed for user id: \(id): \(error.localizedDescription)")
             throw error
         }

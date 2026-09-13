@@ -76,6 +76,7 @@ extension StoreDownloadEndpoint {
         externalVersionID: String,
         deadline: NIODeadline = .now() + .seconds(45)
     ) async throws -> [String: Any] {
+        let deviceIdentifier = deviceIdentifier.uppercased()
         var currentURL = try url(pod: account.pod, deviceIdentifier: deviceIdentifier)
         var redirectAttempt = 0
         var finalResponse: HTTPClient.Response?
@@ -130,6 +131,7 @@ extension StoreDownloadEndpoint {
             format: nil
         ) as? [String: Any]
         guard let dict = plist else { try ensureFailed(Strings.invalidResponse) }
+        try ApplePackageError.checkSession(dict)
 
         return dict
     }

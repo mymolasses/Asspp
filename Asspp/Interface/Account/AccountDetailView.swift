@@ -39,7 +39,7 @@ struct AccountDetailView: View {
             }
             Section {
                 Button { copyToClipboard(account?.account.store) } label: {
-                    Text("\(account?.account.store ?? "") - \(ApplePackage.Configuration.countryCode(for: account?.account.store ?? "") ?? "Unknown")")
+                    Text(account?.regionName ?? "未知地区")
                 }
                 .foregroundStyle(.primary)
             } header: {
@@ -92,7 +92,7 @@ struct AccountDetailView: View {
                     }
                 }
                 .disabledWhenLoading()
-                .disabled(needsVerificationCode && verificationCode.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                .disabled(vm.refreshingAccountIDs.contains(accountId))
             } header: {
                 Text("Password Token")
             } footer: {

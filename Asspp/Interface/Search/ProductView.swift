@@ -38,6 +38,9 @@ struct ProductView: View {
     @State private var licenseHint: Hint?
     @State private var showLicenseAlert = false
     @State private var hint: Hint?
+    @State private var isAcquiringLicense = false
+    @State private var showPurchaseResult = false
+    @State private var showAccountDetails = false
 
     let sizeFormatter: ByteCountFormatter = {
         let formatter = ByteCountFormatter()
@@ -78,10 +81,21 @@ struct ProductView: View {
                 selection = vm.eligibleAccounts(for: region).first?.id ?? eligibleAccounts.first?.id ?? .init()
             }
         }
-        .navigationDestination(for: PackageManifest.self) { manifest in
-            PackageView(pkg: manifest)
+        .sheet(isPresented: $showAccountDetails) {
+            NavigationStack {
+                AccountDetailView(accountId: selection)
+                    .toolbar { Button("完成") { showAccountDetails = false } }
+            }
         }
         .navigationTitle("Select Account")
+        .alert("购买请求结果", isPresented: $showPurchaseResult) {
+            Button("确定", role: .cancel) {}
+            if vm.sessionErrors[selection] != nil {
+                Button("打开账号 / 输入验证码") { showAccountDetails = true }
+            }
+        } message: {
+            Text(licenseHint?.message ?? "")
+        }
         .alert("License Required", isPresented: $showLicenseAlert) {
             var confirmRole: ButtonRole?
             #if compiler(>=6.2)
@@ -93,11 +107,7 @@ struct ProductView: View {
             return Group {
                 Button("Acquire License", role: confirmRole) {
                     Task {
-                        do {
-                            try await acquireLicense()
-                        } catch {
-                            licenseHint = Hint(message: error.localizedDescription, color: .red)
-                        }
+                        await requestLicense()
                     }
                 }
 
@@ -106,8 +116,7 @@ struct ProductView: View {
         } message: {}
     }
 
-    /// Use the saved session. Reauthentication belongs to AppStore.rotate,
-    /// which selects remote/local SAP and supports the account's 2FA flow.
+    /// AppStore retries an explicitly expired session once using local SAP.
     private func acquireLicense() async throws {
         guard let account else { return }
         try await vm.withAccount(id: account.id) { userAccount in
@@ -119,14 +128,21 @@ struct ProductView: View {
         licenseHint = Hint(message: String(localized: "Request Succeeded"), color: .green)
     }
 
+    private func requestLicense() async {
+        guard !isAcquiringLicense, account != nil else { return }
+        isAcquiringLicense = true
+        defer { isAcquiringLicense = false }
+        do { try await acquireLicense() }
+        catch { licenseHint = Hint(message: error.localizedDescription, color: .red) }
+        showPurchaseResult = true
+    }
+
     var packageHeader: some View {
         Section {
             PackageDisplayView(archive: archive.package)
-            NavigationLink {
-                // Build the archive lazily: constructing it eagerly here runs
-                // two synchronous file reads + a JSON decode on every body
-                // evaluation, even before the user navigates.
-                ProductHistoryView(accountID: selection, region: region, package: archive.package)
+            Button {
+                logger.info("history: navigation requested")
+                navigationPath.append(HistoryDestination(accountID: selection, region: region, package: archive.package))
             } label: {
                 let badgeText = archive.releaseDate.flatMap { date in
                     Text(date.formatted(.relative(presentation: .numeric)))
@@ -135,6 +151,7 @@ struct ProductView: View {
                 Text("Version \(archive.package.software.version)")
                     .badge(badgeText)
             }
+            .disabled(account == nil)
         } header: {
             Text("Package")
         }
@@ -176,13 +193,15 @@ struct ProductView: View {
         Section {
             Text("\(archive.formattedPrice ?? "N/A")")
             if archive.price == 0 {
-                AsyncButton {
-                    try await acquireLicense()
+                Button {
+                    Task { await requestLicense() }
                 } label: {
-                    Text("Acquire License")
+                    HStack {
+                        if isAcquiringLicense { ProgressView() }
+                        Text(isAcquiringLicense ? "正在请求购买…" : "请求购买 / 获取许可证")
+                    }
                 }
-                .disabledWhenLoading()
-                .disabled(account == nil)
+                .disabled(account == nil || isAcquiringLicense)
             }
         } header: {
             Text("Pricing")
@@ -198,18 +217,39 @@ struct ProductView: View {
 
     var accountSelector: some View {
         Section {
-            Picker("Account", selection: $selection) {
+            Menu {
                 ForEach(eligibleAccounts) { account in
-                    Text(account.account.email)
-                        .tag(account.id)
+                    Button("\(account.account.email) · \(account.regionName)") {
+                        selection = account.id
+                    }
+                }
+            } label: {
+                HStack {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text(account?.account.email ?? "请选择账号")
+                            .lineLimit(1).truncationMode(.middle)
+                        Text(account?.regionName ?? "未知地区")
+                            .font(.caption).foregroundStyle(.secondary)
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    Image(systemName: "chevron.up.chevron.down")
                 }
             }
-            .pickerStyle(.menu)
             .redacted(reason: .placeholder, isEnabled: vm.demoMode)
+            if vm.refreshingAccountIDs.contains(selection) {
+                HStack { ProgressView(); Text("登录失效，正在本地刷新令牌…") }
+            } else if let error = vm.sessionErrors[selection] {
+                Text(error).foregroundStyle(.red)
+            } else if account != nil, !vm.verifiedAccountIDs.contains(selection) {
+                Text("已载入保存的登录信息，尚未验证；请求时若已失效，将自动刷新一次。")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
+            Button("账号详情 / 刷新令牌 / 验证码") { showAccountDetails = true }
+                .disabled(account == nil)
         } header: {
             Text("Account")
         } footer: {
-            Text("You have searched this package with region \(region)")
+            Text("搜索地区：\(AppStore.UserAccount.regionName(for: region))")
         }
     }
 
@@ -259,19 +299,5 @@ extension AppStore.AppPackage {
     var displaySupportedDevicesIcon: String {
         // TODO: assuming iPhone for now
         "iphone"
-    }
-}
-
-/// Defers building its content until the view is actually rendered, so an
-/// expensive destination is not constructed eagerly inside a NavigationLink.
-struct LazyView<Content: View>: View {
-    private let build: () -> Content
-
-    init(_ build: @autoclosure @escaping () -> Content) {
-        self.build = build
-    }
-
-    var body: Content {
-        build()
     }
 }

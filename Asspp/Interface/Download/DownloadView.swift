@@ -66,6 +66,14 @@ private struct PackageManifestRow: View {
         NavigationLink(value: manifest) {
             VStack(spacing: 8) {
                 ArchivePreviewView(archive: manifest.package)
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("下载账号：\(manifest.account.account.email)")
+                        .lineLimit(1).truncationMode(.middle)
+                        .redacted(reason: .placeholder, isEnabled: AppStore.this.demoMode)
+                    Text("地区：\(manifest.account.regionName)")
+                }
+                .font(.caption).foregroundStyle(.secondary)
+                .frame(maxWidth: .infinity, alignment: .leading)
                 SimpleProgress(progress: manifest.state.percent)
                     .animation(.interactiveSpring, value: manifest.state.percent)
                 HStack {

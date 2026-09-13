@@ -23,12 +23,7 @@ let logger = {
 APLogger.verbose = true
 APLogger.logger = Logger(label: "wiki.qaq.asspp.applepackage")
 
-let version = [
-    Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String,
-    Bundle.main.infoDictionary?["CFBundleVersion"] as? String,
-]
-.compactMap { $0 ?? "?" }
-.joined(separator: " ")
+let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "?"
 
 let bundleIdentifier = Bundle.main.bundleIdentifier!
 logger.info("Asspp \(bundleIdentifier) \(version) starting up...")
