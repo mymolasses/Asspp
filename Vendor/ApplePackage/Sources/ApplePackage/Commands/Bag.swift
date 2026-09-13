@@ -7,6 +7,7 @@
 
 import AsyncHTTPClient
 import Foundation
+import NIOCore
 
 public enum Bag {
     public struct BagOutput {
@@ -45,7 +46,8 @@ public enum Bag {
             headers: .init(headers)
         )
 
-        let response = try await client.execute(request: request, deadline: .now() + .seconds(20)).get()
+        let deadline = NIODeadline.now() + .seconds(20)
+        let response: HTTPClient.Response = try await client.execute(request: request, deadline: deadline).get()
 
         APLogger.logResponse(
             status: response.status.code,

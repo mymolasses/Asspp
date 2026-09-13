@@ -7,6 +7,7 @@
 
 import AsyncHTTPClient
 import Foundation
+import NIOCore
 
 public enum Purchase {
     public static func purchase(
@@ -49,7 +50,8 @@ public enum Purchase {
             guid: guid,
             pricingParameters: pricingParameters
         )
-        let response = try await client.execute(request: request, deadline: .now() + .seconds(35)).get()
+        let deadline = NIODeadline.now() + .seconds(35)
+        let response: HTTPClient.Response = try await client.execute(request: request, deadline: deadline).get()
 
         APLogger.logResponse(
             status: response.status.code,
