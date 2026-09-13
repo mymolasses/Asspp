@@ -7,10 +7,11 @@
 
 import AsyncHTTPClient
 import Foundation
+import NIOCore
 import NIOHTTP1
 
 public enum Authenticator {
-    private enum LoginResponse {
+    enum LoginResponse {
         case success(Account)
         case codeRequired
         case redirect(URL)
@@ -38,13 +39,20 @@ public enum Authenticator {
         var pod: String?
         var currentAttempt = 1
         var redirectAttempt = 0
-        var lastError: Error?
+        var bodies: [Int: Data] = [:]
 
         while currentAttempt <= 3, redirectAttempt <= 3 {
             defer { currentAttempt += 1 }
             do {
-                let data = try authenticationBody(email: email, password: password, code: code,
-                                                  deviceIdentifier: deviceIdentifier, attempt: redirectAttempt > 0 ? 1 : currentAttempt)
+                let requestAttempt = redirectAttempt > 0 ? 1 : currentAttempt
+                let data: Data
+                if let saved = bodies[requestAttempt] {
+                    data = saved
+                } else {
+                    data = try authenticationBody(email: email, password: password, code: code,
+                                                  deviceIdentifier: deviceIdentifier, attempt: requestAttempt)
+                    bodies[requestAttempt] = data
+                }
                 var request = try makeRequest(
                     endpoint: requestEndpoint,
                     email: email,
@@ -57,9 +65,10 @@ public enum Authenticator {
                 if let actionSignature {
                     request.headers.add(name: "X-Apple-ActionSignature", value: try await actionSignature(data, bagOutput, deviceIdentifier))
                 }
-                let response = try await client.execute(request: request).get()
+                let response = try await sendLoginRequest(client: client, request: request, endpoint: requestEndpoint, cookies: &cookies)
                 let result = try parseResponse(
                     response,
+                    endpoint: requestEndpoint,
                     email: email,
                     password: password,
                     code: code,
@@ -72,9 +81,6 @@ public enum Authenticator {
                 case let .success(account):
                     return account
                 case let .redirect(uRL):
-                    guard uRL.scheme == "https", let host = uRL.host?.lowercased(), host.hasSuffix(".itunes.apple.com") else {
-                        try ensureFailed("Apple authentication returned an untrusted redirect")
-                    }
                     requestEndpoint = uRL
                     currentAttempt -= 1 // allow one more attempt when redirect
                     redirectAttempt += 1
@@ -89,12 +95,71 @@ public enum Authenticator {
                     try ensureFailed("\(Strings.authFailed): \(string)")
                 }
             } catch {
-                lastError = error
+                // Do not turn malformed responses, signing failures or bad codes
+                // into new credential attempts. Transport retries happen below.
+                throw error
             }
         }
 
-        if let lastError = lastError { throw lastError }
+        try ensureFailed("Apple 登录超过允许的重定向或认证次数，请稍后重试。")
+    }
+
+    private static func sendLoginRequest(client: HTTPClient, request: HTTPClient.Request, endpoint: URL, cookies: inout [Cookie]) async throws -> HTTPClient.Response {
+        let deadline = NIODeadline.now() + .seconds(60)
+        var request = request
+        for attempt in 1...3 {
+            try Task.checkCancellation()
+            let response: HTTPClient.Response = try await client.execute(request: request, deadline: deadline).get()
+            cookies.mergeCookies(response.cookies)
+            let retry = shouldRetryResponse(status: Int(response.status.code),
+                location: response.headers.first(name: "location"),
+                body: response.body.map { Data($0.readableBytesView) })
+            if !retry || attempt == 3 { return response }
+            APLogger.info("auth: retrying anomalous response HTTP \(response.status.code), transport attempt \(attempt)")
+            // Preserve signed XML bytes and signature; carry response cookies
+            // forward just like the reference client's cookie jar.
+            request.headers.remove(name: "Cookie")
+            for (name, value) in cookies.buildCookieHeader(endpoint) {
+                request.headers.add(name: name, value: value)
+            }
+            try await Task.sleep(nanoseconds: UInt64(attempt) * 250_000_000)
+        }
         try ensureFailed(Strings.authFailedUnknown)
+    }
+
+    static func shouldRetryResponse(status: Int, location: String?, body: Data?) -> Bool {
+        if [204, 404, 429, 500, 502, 503, 504].contains(status) { return true }
+        if [301, 302, 303, 307, 308].contains(status) {
+            return location?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty != false
+        }
+        if status == 200 {
+            return (try? decodeLoginBody(body ?? Data(), status: status, contentType: nil)) == nil
+        }
+        return false
+    }
+
+    static func redirectURL(status: Int, location: String?, from endpoint: URL) throws -> URL? {
+        guard [301, 302, 303, 307, 308].contains(status) else { return nil }
+        guard let location, !location.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            try ensureFailed("Apple 登录重定向异常：HTTP \(status) 缺少 Location（已重试）。未发送到任何猜测地址，请稍后重试或检查代理网络。")
+        }
+        guard let url = URL(string: location.trimmingCharacters(in: .whitespacesAndNewlines), relativeTo: endpoint)?.absoluteURL,
+              url.scheme?.lowercased() == "https", let host = url.host?.lowercased(),
+              host.hasSuffix(".itunes.apple.com"), url.user == nil, url.password == nil,
+              url.fragment == nil, url.port == nil || url.port == 443 else {
+            try ensureFailed("Apple 登录返回不可信重定向，已停止发送登录信息。")
+        }
+        return url
+    }
+
+    static func decodeLoginBody(_ data: Data, status: Int, contentType: String?) throws -> [String: Any] {
+        let plistData = Bag.extractPlistData(from: data)
+        guard let value = try? PropertyListSerialization.propertyList(from: plistData, options: [], format: nil),
+              let dictionary = value as? [String: Any] else {
+            // Metadata only: never surface body contents (which can contain tokens).
+            try ensureFailed("Apple 登录响应不是有效 plist：HTTP \(status)，类型 \(contentType ?? "未知")，\(data.count) 字节。可能是空响应或网络错误页面，请稍后重试或检查代理网络。")
+        }
+        return dictionary
     }
 
     public static func rotatePasswordToken(for account: inout Account) async throws {
@@ -114,9 +179,7 @@ public enum Authenticator {
         guard var comps = URLComponents(url: baseURL, resolvingAgainstBaseURL: true) else {
             try ensureFailed("\(Strings.invalidAuthEndpoint): \(baseURL)")
         }
-        comps.queryItems = [
-            URLQueryItem(name: "guid", value: deviceIdentifier),
-        ]
+        comps.queryItems = (comps.queryItems ?? []).filter { $0.name != "guid" } + [URLQueryItem(name: "guid", value: deviceIdentifier)]
         return try comps.url.get()
     }
 
@@ -132,6 +195,8 @@ public enum Authenticator {
         var headers: [(String, String)] = [
             ("User-Agent", Configuration.userAgent),
             ("Content-Type", "application/x-www-form-urlencoded"),
+            ("Accept", "application/x-apple-plist, application/xml"),
+            ("Accept-Encoding", "identity"),
         ]
         for item in cookies.buildCookieHeader(endpoint) {
             headers.append(item)
@@ -155,8 +220,9 @@ public enum Authenticator {
         )
     }
 
-    private static func parseResponse(
+    static func parseResponse(
         _ response: HTTPClient.Response,
+        endpoint: URL,
         email: String,
         password: String,
         code: String,
@@ -172,13 +238,12 @@ public enum Authenticator {
         )
 
         cookies.mergeCookies(response.cookies)
-        if [204, 429, 500, 502, 503, 504].contains(Int(response.status.code)) {
-            return .retry
+        if [204, 404, 429, 500, 502, 503, 504].contains(Int(response.status.code)) {
+            return .failure("Apple 登录服务暂不可用：HTTP \(response.status.code)（已重试）。")
         }
 
         let readStoreFrontValue = response
             .headers["x-set-apple-store-front"]
-            .filter { !$0.isEmpty }
             .filter { !$0.isEmpty }
         assert(readStoreFrontValue.count <= 1)
         if let first = readStoreFrontValue.first {
@@ -190,13 +255,7 @@ public enum Authenticator {
             APLogger.info("auth: received pod value: \(podValue)")
         }
 
-        let redirectStatuses: [HTTPResponseStatus] = [.movedPermanently, .found, .seeOther, .temporaryRedirect, .permanentRedirect]
-        if redirectStatuses.contains(response.status) {
-            guard let location = response.headers.first(name: "location"),
-                  let url = URL(string: location)
-            else {
-                return .failure(Strings.failedToRetrieveRedirect)
-            }
+        if let url = try redirectURL(status: Int(response.status.code), location: response.headers.first(name: "location"), from: endpoint) {
             return .redirect(url)
         }
 
@@ -206,12 +265,10 @@ public enum Authenticator {
             return .failure("response body is empty (code: \(response.status.code))")
         }
 
-        let listItem = try PropertyListSerialization.propertyList(
-            from: data,
-            options: [],
-            format: nil
-        )
-        let dic = try (listItem as? [String: Any]).get(Strings.responseNotDictionary)
+        let dic = try decodeLoginBody(data, status: Int(response.status.code), contentType: response.headers.first(name: "content-type"))
+        guard response.status == .ok else {
+            return .failure("Apple 登录服务返回 HTTP \(response.status.code)。")
+        }
         if attempt == 1, dic["failureType"] as? String == "-5000" {
             return .retry
         }

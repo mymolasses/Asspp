@@ -44,7 +44,12 @@ enum LocalSAPAuthenticator {
                 let result = input.withCString { AssppSAPSign($0) }
                 guard let result else { throw Failure(message: "本地 SAP 未返回结果。") }
                 defer { AssppSAPFree(result) }
-                let output = try JSONDecoder().decode(SignResponse.self, from: Data(String(cString: result).utf8))
+                let output: SignResponse
+                do {
+                    output = try JSONDecoder().decode(SignResponse.self, from: Data(String(cString: result).utf8))
+                } catch {
+                    throw Failure(message: "本地 SAP 签名结果格式异常（JSON / Base64 解码失败），尚未向 Apple 发送本次登录请求。")
+                }
                 if let error = output.error { throw Failure(message: error) }
                 guard let signature = output.signature, !signature.isEmpty else { throw Failure(message: "本地 SAP 签名为空。") }
                         continuation.resume(returning: signature.base64EncodedString())

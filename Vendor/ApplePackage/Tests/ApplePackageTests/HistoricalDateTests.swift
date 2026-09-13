@@ -3,6 +3,43 @@ import XCTest
 @testable import ApplePackage
 
 final class HistoricalDateTests: XCTestCase {
+    func testLoginParsesBareWrappedAndBinaryPlists() throws {
+        let payload: [String: Any] = ["failureType": "5005", "customerMessage": "test"]
+        let xml = try PropertyListSerialization.data(fromPropertyList: payload, format: .xml, options: 0)
+        let binary = try PropertyListSerialization.data(fromPropertyList: payload, format: .binary, options: 0)
+        let wrapped = Data("<Document><Protocol>".utf8) + xml + Data("</Protocol></Document>".utf8)
+        for data in [xml, binary, wrapped] {
+            XCTAssertEqual(try Authenticator.decodeLoginBody(data, status: 200, contentType: "text/xml")["failureType"] as? String, "5005")
+            XCTAssertFalse(Authenticator.shouldRetryResponse(status: 200, location: nil, body: data))
+        }
+    }
+
+    func testMalformedLoginResponsesHaveSafeDiagnosticsAndBoundedRetryClassification() {
+        for data in [Data(), Data("<html>private-token-do-not-log</html>".utf8)] {
+            XCTAssertTrue(Authenticator.shouldRetryResponse(status: 200, location: nil, body: data))
+            XCTAssertThrowsError(try Authenticator.decodeLoginBody(data, status: 200, contentType: "text/html")) {
+                XCTAssertTrue($0.localizedDescription.contains("HTTP 200"))
+                XCTAssertFalse($0.localizedDescription.contains("private-token-do-not-log"))
+            }
+        }
+        XCTAssertTrue(Authenticator.shouldRetryResponse(status: 302, location: nil, body: nil))
+        XCTAssertTrue(Authenticator.shouldRetryResponse(status: 302, location: "  ", body: nil))
+        XCTAssertTrue(Authenticator.shouldRetryResponse(status: 503, location: nil, body: nil))
+        XCTAssertFalse(Authenticator.shouldRetryResponse(status: 401, location: nil, body: nil))
+        XCTAssertFalse(Authenticator.shouldRetryResponse(status: 302, location: "/auth", body: nil))
+    }
+
+    func testLoginRedirectResolutionAndTrustBoundary() throws {
+        let base = URL(string: "https://buy.itunes.apple.com/WebObjects/MZFinance.woa/wa/authenticate?guid=ABC")!
+        let relative = try XCTUnwrap(Authenticator.redirectURL(status: 302, location: "/WebObjects/MZFinance.woa/wa/authenticate?guid=ABC", from: base))
+        XCTAssertEqual(relative, base)
+        XCTAssertEqual(try Authenticator.redirectURL(status: 307, location: "https://p25-buy.itunes.apple.com/auth", from: base)?.host, "p25-buy.itunes.apple.com")
+        XCTAssertNil(try Authenticator.redirectURL(status: 200, location: nil, from: base))
+        for location in [nil, "", "http://buy.itunes.apple.com/auth", "https://itunes.apple.com.evil.invalid/auth", "https://user:pass@buy.itunes.apple.com/auth", "https://buy.itunes.apple.com:444/auth"] as [String?] {
+            XCTAssertThrowsError(try Authenticator.redirectURL(status: 302, location: location, from: base))
+        }
+    }
+
     func testSessionExpiryIsTypedForHistoryAndPurchase() {
         for value in ["2034", "2042", "1008", 2034, 2042, 1008] as [Any] {
             XCTAssertThrowsError(try ApplePackageError.checkSession(["failureType": value])) { error in

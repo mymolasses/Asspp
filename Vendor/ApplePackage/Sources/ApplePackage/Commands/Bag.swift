@@ -21,7 +21,7 @@ public enum Bag {
     private static let defaultAuthEndpoint = "https://auth.itunes.apple.com/auth/v1/native/fast/"
 
     public static func fetchBag() async throws -> BagOutput {
-        let deviceIdentifier = Configuration.deviceIdentifier
+        let deviceIdentifier = Configuration.deviceIdentifier.uppercased()
 
         let client = Configuration.makeHTTPClient(redirectConfiguration: .follow(max: 8, allowCycles: false))
         defer { _ = client.shutdown() }
@@ -79,7 +79,7 @@ public enum Bag {
         // authenticateAccount used to live inside the nested urlBag dict,
         // newer bag responses move it to the plist root
         let urlBag = plist["urlBag"] as? [String: Any] ?? [:]
-        let authURLString = (plist["authenticateAccount"] as? String) ?? (urlBag["authenticateAccount"] as? String)
+        let authURLString = (urlBag["authenticateAccount"] as? String) ?? (plist["authenticateAccount"] as? String)
         let updateProductURL = (urlBag["updateProduct"] as? String).flatMap(normalizedUpdateProductEndpoint)
 
         guard let authURLString,
@@ -102,7 +102,10 @@ public enum Bag {
     /// that the login flow requires; the no-trailing-slash variant 301s to an
     /// HTML page. Legacy endpoints pass through unchanged.
     private static func normalizedAuthEndpoint(from urlString: String) -> URL? {
-        guard var comps = URLComponents(string: urlString) else { return nil }
+        guard var comps = URLComponents(string: urlString),
+              comps.scheme?.lowercased() == "https", let host = comps.host?.lowercased(),
+              host.hasSuffix(".itunes.apple.com"), comps.user == nil, comps.password == nil,
+              comps.fragment == nil, comps.port == nil || comps.port == 443 else { return nil }
         if comps.host == "auth.itunes.apple.com" {
             var path = comps.path
             while path.hasSuffix("/") {
@@ -131,7 +134,7 @@ public enum Bag {
     /// The bag XML response wraps the plist inside `<Document><Protocol><plist>...</plist>`.
     /// Extract the `<plist>...</plist>` portion so PropertyListSerialization can parse it.
     /// If the data is already a bare plist, return it as-is.
-    private static func extractPlistData(from data: Data) -> Data {
+    static func extractPlistData(from data: Data) -> Data {
         guard let xmlString = String(data: data, encoding: .utf8),
               let startRange = xmlString.range(of: "<plist"),
               let endRange = xmlString.range(of: "</plist>")
