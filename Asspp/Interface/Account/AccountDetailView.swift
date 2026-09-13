@@ -124,7 +124,10 @@ struct AccountDetailView: View {
 
 private extension Error {
     var requiresVerificationCode: Bool {
-        switch self {
+        guard let appleError = self as? ApplePackageError else {
+            return false
+        }
+        switch appleError {
         case ApplePackageError.verificationCodeRequired, ApplePackageError.invalidVerificationCode:
             true
         default:
