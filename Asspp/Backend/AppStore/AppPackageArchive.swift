@@ -43,13 +43,13 @@ class AppPackageArchive: ObservableObject {
     }
 
     var isVersionItemsFullyLoaded: Bool {
-        assert(versionItems.count <= versionIdentifiers.count)
-        return versionItems.count == versionIdentifiers.count
+        return versionIdentifiers.allSatisfy { versionItems[$0] != nil }
     }
 
     @Published var error: String?
     @Published var loading = false
     @Published var shouldDismiss = false
+    private var attemptedVersionIDs: Set<String> = []
 
     init(accountID: String?, region: String, package: AppStore.AppPackage) {
         accountIdentifier = accountID
@@ -79,20 +79,29 @@ class AppPackageArchive: ObservableObject {
         error = nil
         versionIdentifiers = []
         versionItems = [:]
+        attemptedVersionIDs = []
     }
 
     func populateVersionIdentifiers(_ completion: (() async -> Void)? = nil) {
         guard let accountIdentifier, !loading else { return }
         let bundleID = package.software.bundleID
+        let software = package.software
         loading = true
         error = nil
 
         Task {
             do {
                 let versions = try await AppStore.this.withAccount(id: accountIdentifier) { userAccount in
-                    try await VersionFinder.list(account: &userAccount.account, bundleIdentifier: bundleID)
+                    try await VersionFinder.list(account: &userAccount.account, bundleIdentifier: bundleID, software: software)
                 }
-                self.versionIdentifiers = versions.reversed()
+                var seen = Set<String>()
+                self.versionIdentifiers = versions.reversed().filter { seen.insert($0).inserted }
+                var retained: OrderedDictionary<VersionIdentifier, VersionMetadata> = [:]
+                for id in self.versionIdentifiers {
+                    if let metadata = self.versionItems[id] { retained[id] = metadata }
+                }
+                self.versionItems = retained
+                self.attemptedVersionIDs = []
             } catch {
                 if case .licenseRequired = error as? ApplePackageError {
                     self.shouldDismiss = true
@@ -110,20 +119,23 @@ class AppPackageArchive: ObservableObject {
         error = nil
 
         Task {
-            do {
-                for _ in 0 ..< count where !self.isVersionItemsFullyLoaded {
-                    let nextIdx = self.versionItems.count
-                    let version = self.versionIdentifiers[nextIdx]
+                let missing = self.versionIdentifiers.filter { self.versionItems[$0] == nil }
+                let unattempted = missing.filter { !self.attemptedVersionIDs.contains($0) }
+                let pending = (unattempted.isEmpty ? missing : unattempted).prefix(max(0, count))
+                var failures: [String] = []
+                for version in pending {
+                    self.attemptedVersionIDs.insert(version)
                     let app = self.package.software
-
-                    let metadata = try await AppStore.this.withAccount(id: accountIdentifier) { userAccount in
-                        try await VersionLookup.getVersionMetadata(account: &userAccount.account, app: app, versionID: version)
+                    do {
+                        let metadata = try await AppStore.this.withAccount(id: accountIdentifier) { userAccount in
+                            try await VersionLookup.getVersionMetadata(account: &userAccount.account, app: app, versionID: version)
+                        }
+                        self.versionItems[version] = metadata
+                    } catch {
+                        failures.append("\(version): \(error.localizedDescription)")
                     }
-                    self.versionItems[version] = metadata
                 }
-            } catch {
-                self.error = error.localizedDescription
-            }
+                self.error = failures.isEmpty ? nil : failures.joined(separator: "\n")
             self.loading = false
         }
     }
