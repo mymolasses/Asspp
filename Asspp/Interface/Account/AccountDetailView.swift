@@ -96,7 +96,9 @@ struct AccountDetailView: View {
             } header: {
                 Text("Password Token")
             } footer: {
-                if rotatingHint.isEmpty {
+                if rotatingHint.isEmpty, let error = vm.sessionErrors[accountId] {
+                    Text(error).foregroundStyle(.red)
+                } else if rotatingHint.isEmpty {
                     Text("If you fail to acquire a license for a product, rotating the password token may help. This will use the initial password to authenticate with the App Store again.")
                 } else {
                     Text(rotatingHint)
@@ -113,5 +115,9 @@ struct AccountDetailView: View {
         }
         .formStyle(.grouped)
         .navigationTitle("Account Details")
+        .onAppear {
+            // A failed automatic refresh may already have requested a 2FA code.
+            needsVerificationCode = vm.sessionErrors[accountId] != nil
+        }
     }
 }

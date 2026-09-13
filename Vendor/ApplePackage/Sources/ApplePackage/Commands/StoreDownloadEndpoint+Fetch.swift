@@ -117,6 +117,8 @@ extension StoreDownloadEndpoint {
 
         guard let finalResponse else { try ensureFailed(Strings.noResponseReceived) }
 
+        if finalResponse.status == .unauthorized { throw ApplePackageError.sessionExpired }
+
         try ensure(finalResponse.status == .ok, Strings.requestFailed(status: finalResponse.status.code))
 
         guard var body = finalResponse.body,

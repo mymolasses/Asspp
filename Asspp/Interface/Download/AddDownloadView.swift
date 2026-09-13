@@ -50,14 +50,20 @@ struct AddDownloadView: View {
             }
 
             Section {
-                Picker("Account", selection: $selection) {
+                Menu {
                     ForEach(avm.accounts) { account in
-                        Text(account.account.email)
-                            .id(account.id)
+                        Button("\(account.account.email) · \(account.regionName)") { selection = account.id }
                     }
+                } label: {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text(account?.account.email ?? "请选择账号")
+                            .lineLimit(1).truncationMode(.middle)
+                        Text(account?.regionName ?? "未知地区")
+                            .font(.caption).foregroundStyle(.secondary)
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
                 }
-                .pickerStyle(.menu)
-                .onAppear { selection = avm.accounts.first?.id ?? .init() }
+                .onAppear { if account == nil { selection = avm.accounts.first?.id ?? .init() } }
                 .redacted(reason: .placeholder, isEnabled: avm.demoMode)
             } header: {
                 Text("Account")

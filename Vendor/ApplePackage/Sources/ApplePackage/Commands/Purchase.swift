@@ -61,6 +61,8 @@ public enum Purchase {
 
         account.cookie.mergeCookies(response.cookies)
 
+        if response.status == .unauthorized { throw ApplePackageError.sessionExpired }
+
         try ensure(response.status == .ok, Strings.requestFailed(status: response.status.code))
 
         guard var body = response.body,

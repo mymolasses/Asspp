@@ -236,6 +236,7 @@ struct ProductView: View {
                 }
             }
             .redacted(reason: .placeholder, isEnabled: vm.demoMode)
+            .disabled(isAcquiringLicense)
             if vm.refreshingAccountIDs.contains(selection) {
                 HStack { ProgressView(); Text("登录失效，正在本地刷新令牌…") }
             } else if let error = vm.sessionErrors[selection] {

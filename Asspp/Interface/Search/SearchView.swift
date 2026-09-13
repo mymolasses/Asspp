@@ -236,6 +236,12 @@ struct HistoryDestination: Hashable {
     let region: String
     let package: AppStore.AppPackage
 
+    init(accountID: String, region: String, package: AppStore.AppPackage) {
+        self.accountID = accountID
+        self.region = region
+        self.package = package
+    }
+
     static func == (lhs: Self, rhs: Self) -> Bool { lhs.id == rhs.id }
     func hash(into hasher: inout Hasher) { hasher.combine(id) }
 }
