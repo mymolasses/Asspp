@@ -19,6 +19,8 @@ for entry in "$stage/ipatool/internal/sap/"*; do
 done
 cp "$repo/Experiments/LocalSAP/assets/"*.go "$stage/module/internal/sap/assets/"
 patch -d "$stage/module" -p1 < "$repo/Experiments/LocalSAP/assets-cache.patch"
+cp "$repo/Experiments/LocalSAP/protocol/protocol.go" "$stage/module/internal/sap/"
+cp "$repo/Experiments/LocalSAP/signer/signer_local.go" "$stage/module/internal/sap/"
 cp -R "$repo/Experiments/LocalSAP/unicorn" "$stage/module/internal/sap/"
 cp "$repo/Experiments/LocalSAP/bridge/main.go" "$stage/module/bridge/"
 cmake -S "$stage/unicorn" -B "$stage/host" -DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED_LIBS=OFF -DUNICORN_BUILD_TESTS=OFF -DUNICORN_ARCH=x86 -DUNICORN_INTERPRETER=ON

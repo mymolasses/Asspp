@@ -56,7 +56,11 @@ func AssppSAPSign(input *C.char) *C.char {
 		var hardware []byte
 		hardware, err = hex.DecodeString(req.Device)
 		if err == nil {
-			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
+			// Asset extraction, emulator startup and the Apple SAP setup are
+			// separate slow phases on iOS. A 10 minute shared deadline can expire
+			// during initial asset loading and surface later as a certificate/setup
+			// timeout. Keep a bounded but realistic end-to-end budget.
+			ctx, cancel := context.WithTimeout(context.Background(), 25*time.Minute)
 			defer cancel()
 			ctx = assets.WithCacheDirectory(ctx, req.CacheDirectory)
 			signer := sessions[req.Session]

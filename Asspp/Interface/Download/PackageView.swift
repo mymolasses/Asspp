@@ -160,7 +160,16 @@ struct PackageView: View {
                     case .pending:
                         Text("\(Int(pkg.state.percent * 100))%...")
                     case .downloading:
-                        Text("\(Int(pkg.state.percent * 100))%...")
+                        VStack(alignment: .leading, spacing: 8) {
+                            SimpleProgress(progress: pkg.state.percent)
+                            HStack {
+                                Text("\(Int(pkg.state.percent * 100))%")
+                                Spacer()
+                                Text(pkg.state.speed.isEmpty ? "正在计算下载速度…" : "\(pkg.state.speed)/s")
+                            }
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                        }
                     case .paused:
                         Text("Paused at \(Int(pkg.state.percent * 100))%")
                     case .completed:

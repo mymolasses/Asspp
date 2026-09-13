@@ -19,8 +19,8 @@ jobs:
       - name: Build iOS App
         env:
           LOCAL_SAP_LIBRARY_DIR: ${{ runner.temp }}/local-sap
-        run: bash Resources/Scripts/compile.release.mobile.ci.sh "$(pwd)" "$RUNNER_TEMP/Asspp-4.3.6-local.ipa"
+        run: bash Resources/Scripts/compile.release.mobile.ci.sh "$(pwd)" "$RUNNER_TEMP/Asspp-4.3.7-local.ipa"
       - uses: actions/upload-artifact@v4
         with:
-          name: Asspp-4.3.6-local
-          path: ${{ runner.temp }}/Asspp-4.3.6-local.ipa
+          name: Asspp-4.3.7-local
+          path: ${{ runner.temp }}/Asspp-4.3.7-local.ipa

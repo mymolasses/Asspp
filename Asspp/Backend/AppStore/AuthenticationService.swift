@@ -44,15 +44,34 @@ extension AppStore {
             throw AuthenticationError.accountNotFound
         }
         do {
-            let newAppleAccount = try await LocalSAPAuthenticator.authenticate(
-                email: account.account.email,
-                password: account.account.password,
-                code: code,
-                // A 2FA code starts a new authentication transaction. Reusing
-                // stale challenge cookies after an earlier failed login can be
-                // rejected by Apple with HTTP 403.
-                cookies: code.isEmpty ? account.account.cookie : []
-            )
+            var newAppleAccount: ApplePackage.Account
+            do {
+                newAppleAccount = try await LocalSAPAuthenticator.authenticate(
+                    email: account.account.email,
+                    password: account.account.password,
+                    code: code,
+                    // A 2FA code starts a new authentication transaction.
+                    cookies: code.isEmpty ? account.account.cookie : []
+                )
+            } catch ApplePackageError.verificationCodeRequired {
+                // The existing Apple challenge is waiting for a code. Do not
+                // discard it: the UI must let the user complete that challenge.
+                throw ApplePackageError.verificationCodeRequired
+            } catch ApplePackageError.invalidVerificationCode {
+                throw ApplePackageError.invalidVerificationCode
+            } catch where code.isEmpty {
+                // Match AssppWeb's current behavior: old cookies can send a
+                // valid password to a stale Apple challenge and get 301/403.
+                // Retry once with a completely fresh session, then preserve
+                // the original account if it still fails.
+                logger.info("saved account session failed; retrying with a fresh cookie jar")
+                newAppleAccount = try await LocalSAPAuthenticator.authenticate(
+                    email: account.account.email,
+                    password: account.account.password,
+                    code: "",
+                    cookies: []
+                )
+            }
             let updatedAccount = save(email: account.account.email, account: newAppleAccount)
             logger.info("account rotation successful for user id: \(id)")
             return updatedAccount

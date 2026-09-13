@@ -59,7 +59,7 @@ struct DownloadView: View {
 }
 
 private struct PackageManifestRow: View {
-    let manifest: PackageManifest
+    @ObservedObject var manifest: PackageManifest
     @ObservedObject private var vm = Downloads.this
 
     var body: some View {
