@@ -10,6 +10,9 @@ static void hookBridge(uc_engine *uc, uint64_t address, uint32_t size, void *dat
 static uc_err addHook(uc_engine *uc, uc_hook *hook, uintptr_t id, uint64_t begin, uint64_t end) {
     return uc_hook_add(uc, hook, UC_HOOK_CODE, (void *)hookBridge, (void *)id, begin, end);
 }
+static uc_err limitCache(uc_engine *uc) {
+    return uc_ctl_set_tcg_buffer_size(uc, (uint32_t)(64 * 1024 * 1024));
+}
 */
 import "C"
 
@@ -60,6 +63,10 @@ func New(ctx context.Context) (*Engine, error) {
 	}
 	e := &Engine{hooks: make(map[*Hook]bool)}
 	if err := result(C.uc_open(C.UC_ARCH_X86, C.UC_MODE_64, &e.handle)); err != nil {
+		return nil, err
+	}
+	if err := result(C.limitCache(e.handle)); err != nil {
+		C.uc_close(e.handle)
 		return nil, err
 	}
 	return e, nil

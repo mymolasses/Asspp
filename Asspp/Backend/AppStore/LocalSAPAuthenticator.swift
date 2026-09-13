@@ -2,12 +2,14 @@ import ApplePackage
 import Foundation
 
 enum LocalSAPAuthenticator {
+    private static let signingQueue = DispatchQueue(label: "wiki.qaq.Asspp.localSAP", qos: .userInitiated)
     private struct SignRequest: Encodable {
         let setup: String
         let certificate: String
         let device: String
         let version: UInt32
         let body: Data
+        let session: String
     }
     private struct SignResponse: Decodable {
         let signature: Data?
@@ -19,24 +21,36 @@ enum LocalSAPAuthenticator {
     }
 
     static func authenticate(email: String, password: String, code: String, cookies: [Cookie]) async throws -> Account {
-        try await Authenticator.authenticate(email: email, password: password, code: code.filter { !$0.isWhitespace }, cookies: cookies) { body, bag, device in
+        let session = UUID().uuidString
+        defer {
+            // Destroy the signer off the main actor, on the same queue as signing.
+            signingQueue.async {
+                let input = "{\"session\":\"\(session)\",\"close\":true}"
+                if let result = input.withCString({ AssppSAPSign($0) }) { AssppSAPFree(result) }
+            }
+        }
+        return try await Authenticator.authenticate(email: email, password: password, code: code.filter { !$0.isWhitespace }, cookies: cookies) { body, bag, device in
             guard let setup = bag.sapSetup, let certificate = bag.sapCertificate, let version = bag.sapVersion,
                   trustedAppleURL(setup), trustedAppleURL(certificate) else {
                 throw Failure(message: "Apple bag 缺少有效的本地 SAP 配置。")
             }
-            let request = SignRequest(setup: setup, certificate: certificate, device: device, version: version, body: body)
+            let request = SignRequest(setup: setup, certificate: certificate, device: device, version: version, body: body, session: session)
             let data = try JSONEncoder().encode(request)
             let input = String(decoding: data, as: UTF8.self)
             // SAP emulation and setup networking are blocking: keep them off the UI actor.
-            return try await Task.detached(priority: .userInitiated) {
+            return try await withCheckedThrowingContinuation { continuation in
+                signingQueue.async {
+                    do {
                 let result = input.withCString { AssppSAPSign($0) }
                 guard let result else { throw Failure(message: "本地 SAP 未返回结果。") }
                 defer { AssppSAPFree(result) }
                 let output = try JSONDecoder().decode(SignResponse.self, from: Data(String(cString: result).utf8))
                 if let error = output.error { throw Failure(message: error) }
                 guard let signature = output.signature, !signature.isEmpty else { throw Failure(message: "本地 SAP 签名为空。") }
-                return signature.base64EncodedString()
-            }.value
+                        continuation.resume(returning: signature.base64EncodedString())
+                    } catch { continuation.resume(throwing: error) }
+                }
+            }
         }
     }
 

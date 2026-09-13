@@ -179,7 +179,6 @@ public enum Authenticator {
         let readStoreFrontValue = response
             .headers["x-set-apple-store-front"]
             .filter { !$0.isEmpty }
-            .compactMap { $0.components(separatedBy: "-").first }
             .filter { !$0.isEmpty }
         assert(readStoreFrontValue.count <= 1)
         if let first = readStoreFrontValue.first {

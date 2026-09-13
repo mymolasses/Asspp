@@ -16,8 +16,11 @@ import (
 )
 
 var signing sync.Mutex
+var sessions = make(map[string]sap.ActionSigner)
 
 type request struct {
+	Session     string `json:"session"`
+	Close       bool   `json:"close"`
 	Setup       string `json:"setup"`
 	Certificate string `json:"certificate"`
 	Device      string `json:"device"`
@@ -36,19 +39,38 @@ func AssppSAPSign(input *C.char) *C.char {
 	answer := response{}
 	var req request
 	err := json.Unmarshal([]byte(C.GoString(input)), &req)
+	if err == nil && req.Close {
+		if signer := sessions[req.Session]; signer != nil {
+			err = signer.Close()
+			delete(sessions, req.Session)
+		}
+		if err != nil {
+			answer.Error = err.Error()
+		}
+		data, _ := json.Marshal(answer)
+		return C.CString(string(data))
+	}
 	if err == nil {
 		var hardware []byte
 		hardware, err = hex.DecodeString(req.Device)
 		if err == nil {
 			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
 			defer cancel()
-			var signer sap.ActionSigner
-			signer, err = sap.NewSigner(ctx, sap.Config{SetupURL: req.Setup, CertificateURL: req.Certificate, Version: req.Version, HardwareID: hardware})
+			signer := sessions[req.Session]
+			if signer == nil {
+				signer, err = sap.NewSigner(ctx, sap.Config{SetupURL: req.Setup, CertificateURL: req.Certificate, Version: req.Version, HardwareID: hardware})
+				if err == nil && req.Session != "" {
+					sessions[req.Session] = signer
+				}
+			}
 			if err == nil {
 				answer.Signature, err = signer.Sign(req.Body)
-				closeErr := signer.Close()
-				if err == nil {
-					err = closeErr
+				if req.Session == "" || err != nil {
+					closeErr := signer.Close()
+					delete(sessions, req.Session)
+					if err == nil {
+						err = closeErr
+					}
 				}
 			}
 		}
