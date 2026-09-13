@@ -85,8 +85,10 @@ public enum Purchase {
         if let failureType = dict["failureType"] as? String {
             let customerMessage = dict["customerMessage"] as? String
             switch failureType {
-            case "2034", "2042":
-                try ensureFailed(Strings.purchaseFailureMessage(failureType: failureType, customerMessage: customerMessage))
+            case "5002":
+                return // Already acquired, matching AssppWeb's purchase behavior.
+            case "2034", "2042", "1008":
+                try ensureFailed("登录已过期，请在账号详情重新登录（支持验证码）后重试。")
             default:
                 if customerMessage == Strings.passwordChanged {
                     try ensureFailed(Strings.passwordTokenExpired)
@@ -137,7 +139,7 @@ public enum Purchase {
             ("User-Agent", Configuration.userAgent),
             ("iCloud-DSID", account.directoryServicesIdentifier),
             ("X-Dsid", account.directoryServicesIdentifier),
-            ("X-Apple-Store-Front", "\(account.store)-1"),
+            ("X-Apple-Store-Front", storefrontHeader(account.store)),
             ("X-Token", account.passwordToken),
         ]
 
@@ -156,5 +158,12 @@ public enum Purchase {
             headers: .init(headers),
             body: .data(data)
         )
+    }
+
+    static func storefrontHeader(_ store: String) -> String {
+        let trimmed = store.trimmingCharacters(in: .whitespacesAndNewlines)
+        // Server-side SAP returns a complete header (e.g. 143463-2,34).
+        // Adding another suffix makes it invalid. Native sessions may store only the ID.
+        return trimmed.contains("-") ? trimmed : "\(trimmed)-1"
     }
 }

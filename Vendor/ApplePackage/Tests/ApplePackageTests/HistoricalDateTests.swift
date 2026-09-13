@@ -3,6 +3,10 @@ import XCTest
 @testable import ApplePackage
 
 final class HistoricalDateTests: XCTestCase {
+    func testStorefrontHeaderIsNotSuffixedTwice() {
+        XCTAssertEqual(Purchase.storefrontHeader("143463-2,34"), "143463-2,34")
+        XCTAssertEqual(Purchase.storefrontHeader("143463"), "143463-1")
+    }
     func testPlistDateAndStringForms() throws {
         let expected = Date(timeIntervalSince1970: 1704067200)
         let data = try PropertyListSerialization.data(fromPropertyList: ["releaseDate": expected], format: .xml, options: 0)

@@ -106,12 +106,11 @@ struct ProductView: View {
         } message: {}
     }
 
-    /// Rotates the password token and requests a license for the current
-    /// account. Sets `licenseHint` to a success message; callers handle errors.
+    /// Use the saved session. Reauthentication belongs to AppStore.rotate,
+    /// which selects remote/local SAP and supports the account's 2FA flow.
     private func acquireLicense() async throws {
         guard let account else { return }
         try await vm.withAccount(id: account.id) { userAccount in
-            try await ApplePackage.Authenticator.rotatePasswordToken(for: &userAccount.account)
             try await ApplePackage.Purchase.purchase(
                 account: &userAccount.account,
                 app: archive.package.software,
