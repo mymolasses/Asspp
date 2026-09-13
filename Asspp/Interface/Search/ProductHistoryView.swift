@@ -9,13 +9,28 @@ import ApplePackage
 import SwiftUI
 
 struct ProductHistoryView: View {
-    @StateObject var vm: AppPackageArchive
+    @StateObject private var vm: AppPackageArchive
+    @State private var started = false
+    @State private var visibleCount = 50
+
+    init(accountID: String, region: String, package: AppStore.AppPackage) {
+        _vm = StateObject(wrappedValue: AppPackageArchive(accountID: accountID, region: region, package: package))
+    }
     @State private var showErrorAlert = false
     @Environment(\.dismiss) var dismiss
 
     var body: some View {
         Form {
-            ForEach(vm.versionIdentifiers, id: \.self) { key in
+            if vm.loading {
+                HStack {
+                    ProgressView()
+                    Text("正在请求历史版本，接口较慢时请稍候…")
+                }
+            }
+            if vm.versionIdentifiers.isEmpty, !vm.loading {
+                Text(vm.error ?? "暂无历史版本，点击右上角刷新重试。")
+            }
+            ForEach(Array(vm.versionIdentifiers.prefix(visibleCount)), id: \.self) { key in
                 if let aid = vm.accountIdentifier, let pkg = vm.package(for: key) {
                     Menu {
                         Button("Download \(pkg.software.version)") {
@@ -47,25 +62,11 @@ struct ProductHistoryView: View {
                     }
                 }
             }
+            if visibleCount < vm.versionIdentifiers.count {
+                Button("显示更多历史版本") { visibleCount += 50 }
+            }
         }
         .formStyle(.grouped)
-        .overlay {
-            ZStack {
-                Rectangle()
-                    .foregroundStyle(.clear)
-                    .background(.ultraThinMaterial)
-                ProgressView()
-                    .progressViewStyle(.circular)
-                    .smallControlSizeOnMac()
-            }
-            .opacity(vm.loading ? 1 : 0)
-            .allowsHitTesting(vm.loading)
-            .animation(.default, value: vm.loading)
-            .ignoresSafeArea(edges: [.vertical])
-        }
-        .animation(.default, value: vm.versionIdentifiers)
-        .animation(.default, value: vm.versionItems)
-        .animation(.default, value: vm.loading)
         .navigationTitle("Version History")
         .toolbar {
             ToolbarItem(placement: toolbarPlacement) {
@@ -114,7 +115,11 @@ struct ProductHistoryView: View {
         .onChange(of: vm.error) { newValue in
             showErrorAlert = newValue != nil
         }
-        .onAppear {
+        .task {
+            guard !started else { return }
+            started = true
+            // Allow navigation to render before starting the request chain.
+            do { try await Task.sleep(nanoseconds: 200_000_000) } catch { started = false; return }
             vm.populateVersionIdentifiers {
                 await MainActor.run { vm.populateNextVersionItems() }
             }

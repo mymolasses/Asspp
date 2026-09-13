@@ -13,7 +13,7 @@ public enum Purchase {
         account: inout Account,
         app: Software
     ) async throws {
-        let deviceIdentifier = Configuration.deviceIdentifier
+        let deviceIdentifier = Configuration.deviceIdentifier.uppercased()
 
         if (app.price ?? 0) > 0 {
             try ensureFailed(Strings.paidAppsNotSupported)
@@ -49,7 +49,7 @@ public enum Purchase {
             guid: guid,
             pricingParameters: pricingParameters
         )
-        let response = try await client.execute(request: request).get()
+        let response = try await client.execute(request: request, deadline: .now() + .seconds(35)).get()
 
         APLogger.logResponse(
             status: response.status.code,

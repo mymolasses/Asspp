@@ -21,6 +21,7 @@ struct AddAccountView: View {
     @State private var code: String = ""
 
     @State private var error: Error?
+    @State private var isAuthenticating = false
 
     var body: some View {
         Form {
@@ -81,6 +82,8 @@ struct AddAccountView: View {
             }
             Section {
                 AsyncButton {
+                    isAuthenticating = true
+                    defer { isAuthenticating = false }
                     logger.info("starting authentication for user")
                     do {
                         _ = try await vm.authenticate(email: email, password: password, code: code.isEmpty ? "" : code)
@@ -93,7 +96,10 @@ struct AddAccountView: View {
                         throw error
                     }
                 } label: {
-                    Text("Authenticate")
+                    HStack {
+                        if isAuthenticating { ProgressView() }
+                        Text(isAuthenticating ? "正在登录，请稍候…" : "Authenticate")
+                    }
                 }
                 .disabledWhenLoading()
                 .disabled(email.isEmpty || password.isEmpty)
