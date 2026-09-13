@@ -127,7 +127,7 @@ private extension Error {
         guard let appleError = self as? ApplePackageError else {
             return false
         }
-        switch appleError {
+        return switch appleError {
         case ApplePackageError.verificationCodeRequired, ApplePackageError.invalidVerificationCode:
             true
         default:
