@@ -17,6 +17,8 @@ for entry in "$stage/ipatool/internal/sap/"*; do
     [ "$(basename "$entry")" = unicorn ] && continue
     cp -R "$entry" "$stage/module/internal/sap/"
 done
+cp "$repo/Experiments/LocalSAP/assets/"*.go "$stage/module/internal/sap/assets/"
+patch -d "$stage/module" -p1 < "$repo/Experiments/LocalSAP/assets-cache.patch"
 cp -R "$repo/Experiments/LocalSAP/unicorn" "$stage/module/internal/sap/"
 cp "$repo/Experiments/LocalSAP/bridge/main.go" "$stage/module/bridge/"
 cmake -S "$stage/unicorn" -B "$stage/host" -DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED_LIBS=OFF -DUNICORN_BUILD_TESTS=OFF -DUNICORN_ARCH=x86 -DUNICORN_INTERPRETER=ON
@@ -26,6 +28,7 @@ export CGO_CFLAGS="-I$stage/unicorn/include"
 export CGO_LDFLAGS="$stage/host/libunicorn.a -lpthread -lm"
 cd "$stage/module"
 go test ./internal/sap/machine ./internal/sap/machimage ./internal/sap/cpio -timeout 10m
+go test ./internal/sap/assets -run '^TestExplicitSandboxCacheDirectory$' -v
 # Real Apple setup/signing smoke test with dummy bytes, no Apple ID or password.
 go test ./internal/sap -run '^TestSignerIntegration$' -v -timeout 12m
 cmake -S "$stage/unicorn" -B "$stage/ios" -DCMAKE_SYSTEM_NAME=iOS -DCMAKE_OSX_SYSROOT=iphoneos -DCMAKE_OSX_ARCHITECTURES=arm64 -DCMAKE_OSX_DEPLOYMENT_TARGET=16.0 -DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED_LIBS=OFF -DUNICORN_BUILD_TESTS=OFF -DUNICORN_ARCH=x86 -DUNICORN_INTERPRETER=ON

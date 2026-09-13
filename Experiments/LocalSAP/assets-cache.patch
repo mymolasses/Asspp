@@ -1,0 +1,18 @@
+--- a/internal/sap/assets/assets.go
++++ b/internal/sap/assets/assets.go
+@@ -74,3 +74,3 @@
+ func Load(ctx context.Context) (Bundle, error) {
+-	directory, err := cacheDirectory()
++	directory, err := cacheDirectoryForContext(ctx)
+ 	if err != nil {
+--- a/internal/sap/signer_integration_test.go
++++ b/internal/sap/signer_integration_test.go
+@@ -7,2 +7,4 @@
+ 	"time"
++
++	"github.com/majd/ipatool/v2/internal/sap/assets"
+ )
+@@ -12,2 +14,3 @@
+ 	defer cancel()
++	ctx = assets.WithCacheDirectory(ctx, t.TempDir())
+ 

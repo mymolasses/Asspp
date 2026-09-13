@@ -10,6 +10,7 @@ enum LocalSAPAuthenticator {
         let version: UInt32
         let body: Data
         let session: String
+        let cacheDirectory: String
     }
     private struct SignResponse: Decodable {
         let signature: Data?
@@ -21,6 +22,12 @@ enum LocalSAPAuthenticator {
     }
 
     static func authenticate(email: String, password: String, code: String, cookies: [Cookie]) async throws -> Account {
+        // Resolve this for each login: LiveContainer can relocate the sandbox
+        // and does not necessarily export HOME to the embedded Go runtime.
+        let cacheDirectory = try FileManager.default.url(for: .cachesDirectory, in: .userDomainMask,
+                                                        appropriateFor: nil, create: true)
+            .appendingPathComponent("AssppSAP", isDirectory: true)
+        try FileManager.default.createDirectory(at: cacheDirectory, withIntermediateDirectories: true)
         let session = UUID().uuidString
         defer {
             // Destroy the signer off the main actor, on the same queue as signing.
@@ -34,7 +41,8 @@ enum LocalSAPAuthenticator {
                   trustedAppleURL(setup), trustedAppleURL(certificate) else {
                 throw Failure(message: "Apple bag 缺少有效的本地 SAP 配置。")
             }
-            let request = SignRequest(setup: setup, certificate: certificate, device: device, version: version, body: body, session: session)
+            let request = SignRequest(setup: setup, certificate: certificate, device: device, version: version,
+                                      body: body, session: session, cacheDirectory: cacheDirectory.path)
             let data = try JSONEncoder().encode(request)
             let input = String(decoding: data, as: UTF8.self)
             // SAP emulation and setup networking are blocking: keep them off the UI actor.

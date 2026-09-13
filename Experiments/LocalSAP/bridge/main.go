@@ -10,6 +10,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"github.com/majd/ipatool/v2/internal/sap"
+	"github.com/majd/ipatool/v2/internal/sap/assets"
 	"sync"
 	"time"
 	"unsafe"
@@ -19,13 +20,14 @@ var signing sync.Mutex
 var sessions = make(map[string]sap.ActionSigner)
 
 type request struct {
-	Session     string `json:"session"`
-	Close       bool   `json:"close"`
-	Setup       string `json:"setup"`
-	Certificate string `json:"certificate"`
-	Device      string `json:"device"`
-	Version     uint32 `json:"version"`
-	Body        []byte `json:"body"`
+	CacheDirectory string `json:"cacheDirectory"`
+	Session        string `json:"session"`
+	Close          bool   `json:"close"`
+	Setup          string `json:"setup"`
+	Certificate    string `json:"certificate"`
+	Device         string `json:"device"`
+	Version        uint32 `json:"version"`
+	Body           []byte `json:"body"`
 }
 type response struct {
 	Signature []byte `json:"signature,omitempty"`
@@ -56,6 +58,7 @@ func AssppSAPSign(input *C.char) *C.char {
 		if err == nil {
 			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
 			defer cancel()
+			ctx = assets.WithCacheDirectory(ctx, req.CacheDirectory)
 			signer := sessions[req.Session]
 			if signer == nil {
 				signer, err = sap.NewSigner(ctx, sap.Config{SetupURL: req.Setup, CertificateURL: req.Certificate, Version: req.Version, HardwareID: hardware})

@@ -51,13 +51,22 @@ jobs:
         with:
           packages: ldid findutils sed coreutils make
 
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.25.7'
+
+      - name: Build and test local SAP bridge
+        run: bash Experiments/LocalSAP/build.sh "$RUNNER_TEMP/local-sap"
+
       - name: Build
+        env:
+          LOCAL_SAP_LIBRARY_DIR: ${{ runner.temp }}/local-sap
         run: |
           chmod +x Resources/Scripts/compile.release.mobile.ci.sh
-          ./Resources/Scripts/compile.release.mobile.ci.sh "$(pwd)" "$(pwd)/Asspp.ipa"
+          ./Resources/Scripts/compile.release.mobile.ci.sh "$(pwd)" "$RUNNER_TEMP/Asspp.ipa"
 
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
         with:
           name: Asspp.ipa
-          path: Asspp.ipa
+          path: ${{ runner.temp }}/Asspp.ipa
