@@ -126,7 +126,7 @@ struct ProductView: View {
                 // Build the archive lazily: constructing it eagerly here runs
                 // two synchronous file reads + a JSON decode on every body
                 // evaluation, even before the user navigates.
-                LazyView(ProductHistoryView(vm: AppPackageArchive(accountID: selection, region: region, package: archive.package)))
+                ProductHistoryView(accountID: selection, region: region, package: archive.package)
             } label: {
                 let badgeText = archive.releaseDate.flatMap { date in
                     Text(date.formatted(.relative(presentation: .numeric)))

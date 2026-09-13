@@ -7,6 +7,7 @@
 
 import AsyncHTTPClient
 import Foundation
+import NIOCore
 
 extension StoreDownloadEndpoint {
     /// Fetches the product info from the volumeStore endpoint, transparently
@@ -19,12 +20,14 @@ extension StoreDownloadEndpoint {
         deviceIdentifier: String,
         externalVersionID: String
     ) async throws -> [String: Any] {
+        let deadline = NIODeadline.now() + .seconds(45)
         var dict = try await StoreDownloadEndpoint.volumeStore.fetchProduct(
             client: client,
             account: &account,
             app: app,
             deviceIdentifier: deviceIdentifier,
-            externalVersionID: externalVersionID
+            externalVersionID: externalVersionID,
+            deadline: deadline
         )
 
         if isEmptySuccess(dict) {
@@ -36,7 +39,8 @@ extension StoreDownloadEndpoint {
                     account: &account,
                     app: app,
                     deviceIdentifier: deviceIdentifier,
-                    externalVersionID: externalVersionID
+                    externalVersionID: externalVersionID,
+                    deadline: deadline
                 )
             }
         }
@@ -48,7 +52,8 @@ extension StoreDownloadEndpoint {
                 account: &account,
                 app: app,
                 deviceIdentifier: deviceIdentifier,
-                externalVersionID: externalVersionID
+                externalVersionID: externalVersionID,
+                deadline: deadline
             )
         }
 
@@ -68,7 +73,8 @@ extension StoreDownloadEndpoint {
         account: inout Account,
         app: Software,
         deviceIdentifier: String,
-        externalVersionID: String
+        externalVersionID: String,
+        deadline: NIODeadline = .now() + .seconds(45)
     ) async throws -> [String: Any] {
         var currentURL = try url(pod: account.pod, deviceIdentifier: deviceIdentifier)
         var redirectAttempt = 0
@@ -83,7 +89,8 @@ extension StoreDownloadEndpoint {
                 guid: deviceIdentifier,
                 externalVersionID: externalVersionID
             )
-            let response = try await client.execute(request: request).get()
+            try Task.checkCancellation()
+            let response = try await client.execute(request: request, deadline: deadline).get()
             defer { finalResponse = response }
 
             APLogger.logResponse(

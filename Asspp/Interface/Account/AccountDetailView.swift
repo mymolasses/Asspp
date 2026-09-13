@@ -22,6 +22,7 @@ struct AccountDetailView: View {
     @State private var rotatingHint = ""
     @State private var verificationCode = ""
     @State private var needsVerificationCode = false
+    @State private var isReauthenticating = false
 
     var body: some View {
         Form {
@@ -71,6 +72,9 @@ struct AccountDetailView: View {
                         #endif
                 }
                 AsyncButton {
+                    isReauthenticating = true
+                    rotatingHint = "正在重新登录，请稍候…"
+                    defer { isReauthenticating = false }
                     do {
                         try await vm.rotate(id: accountId, code: verificationCode)
                         rotatingHint = String(localized: "Success")
@@ -82,7 +86,10 @@ struct AccountDetailView: View {
                         throw error
                     }
                 } label: {
-                    Text("Rotate Token")
+                    HStack {
+                        if isReauthenticating { ProgressView() }
+                        Text(isReauthenticating ? "正在重新登录…" : "重新登录 / 刷新令牌")
+                    }
                 }
                 .disabledWhenLoading()
                 .disabled(needsVerificationCode && verificationCode.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
@@ -93,7 +100,7 @@ struct AccountDetailView: View {
                     Text("If you fail to acquire a license for a product, rotating the password token may help. This will use the initial password to authenticate with the App Store again.")
                 } else {
                     Text(rotatingHint)
-                        .foregroundStyle(.red)
+                        .foregroundStyle(isReauthenticating ? Color.secondary : Color.primary)
                 }
             }
             Section {

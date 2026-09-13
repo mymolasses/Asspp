@@ -18,29 +18,11 @@ class AppPackageArchive: ObservableObject {
     @Published var package: AppStore.AppPackage
 
     typealias VersionIdentifier = String
-    private var _versionIdentifiers: Persist<[VersionIdentifier]>
-
-    var versionIdentifiers: [VersionIdentifier] {
-        get {
-            return _versionIdentifiers.wrappedValue
-        }
-        set {
-            objectWillChange.send()
-            _versionIdentifiers.wrappedValue = newValue
-        }
-    }
-
-    private var _versionItems: Persist<OrderedDictionary<VersionIdentifier, VersionMetadata>>
-
-    var versionItems: OrderedDictionary<VersionIdentifier, VersionMetadata> {
-        get {
-            return _versionItems.wrappedValue
-        }
-        set {
-            objectWillChange.send()
-            _versionItems.wrappedValue = newValue
-        }
-    }
+    // History is a disposable server result. Keep it in memory for the lifetime
+    // of this screen: navigation must not synchronously decode/encode disk caches.
+    // Old cache files are left untouched, but are no longer read on this path.
+    @Published var versionIdentifiers: [VersionIdentifier] = []
+    @Published var versionItems: OrderedDictionary<VersionIdentifier, VersionMetadata> = [:]
 
     var isVersionItemsFullyLoaded: Bool {
         return versionIdentifiers.allSatisfy { versionItems[$0] != nil }
@@ -56,11 +38,6 @@ class AppPackageArchive: ObservableObject {
         self.region = region
         self.package = package
 
-        let packageIdentifier = [package.id, package.software.bundleID.lowercased(), region]
-            .joined()
-            .lowercased()
-        _versionItems = Persist(key: "\(packageIdentifier).versions", defaultValue: [:])
-        _versionIdentifiers = Persist(key: "\(packageIdentifier).versionNumbers", defaultValue: [])
     }
 
     func package(for externalVersion: String) -> AppStore.AppPackage? {

@@ -48,7 +48,7 @@ public enum Bag {
             headers: .init(headers)
         )
 
-        let response = try await client.execute(request: request).get()
+        let response = try await client.execute(request: request, deadline: .now() + .seconds(20)).get()
 
         APLogger.logResponse(
             status: response.status.code,
