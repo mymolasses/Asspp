@@ -35,7 +35,8 @@ public enum APLogger {
         guard verbose else { return }
         var msg = ">>> \(method) \(url)"
         for (name, value) in headers {
-            let safeValue = name.lowercased().contains("token") || name.lowercased().contains("password")
+            let safeValue = name.lowercased().contains("token") || name.lowercased().contains("password") ||
+                name.lowercased().contains("cookie") || name.lowercased().contains("signature")
                 ? "<redacted>"
                 : value
             msg += "\n    \(name): \(safeValue)"

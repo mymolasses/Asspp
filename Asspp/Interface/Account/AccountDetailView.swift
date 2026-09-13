@@ -82,7 +82,7 @@ struct AccountDetailView: View {
                         needsVerificationCode = false
                     } catch {
                         rotatingHint = error.localizedDescription
-                        needsVerificationCode = true
+                        needsVerificationCode = error.requiresVerificationCode
                         throw error
                     }
                 } label: {
@@ -117,7 +117,18 @@ struct AccountDetailView: View {
         .navigationTitle("Account Details")
         .onAppear {
             // A failed automatic refresh may already have requested a 2FA code.
-            needsVerificationCode = vm.sessionErrors[accountId] != nil
+            needsVerificationCode = false
+        }
+    }
+}
+
+private extension Error {
+    var requiresVerificationCode: Bool {
+        switch self {
+        case ApplePackageError.verificationCodeRequired, ApplePackageError.invalidVerificationCode:
+            true
+        default:
+            false
         }
     }
 }

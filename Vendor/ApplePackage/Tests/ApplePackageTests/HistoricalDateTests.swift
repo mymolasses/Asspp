@@ -3,6 +3,11 @@ import XCTest
 @testable import ApplePackage
 
 final class HistoricalDateTests: XCTestCase {
+    func testVerificationErrorsAreTyped() {
+        XCTAssertEqual(ApplePackageError.verificationCodeRequired.localizedDescription, "Apple 要求输入双重认证验证码。")
+        XCTAssertEqual(ApplePackageError.invalidVerificationCode.localizedDescription, "双重认证验证码无效或已过期，请获取新验证码后重试。")
+    }
+
     func testLoginParsesBareWrappedAndBinaryPlists() throws {
         let payload: [String: Any] = ["failureType": "5005", "customerMessage": "test"]
         let xml = try PropertyListSerialization.data(fromPropertyList: payload, format: .xml, options: 0)

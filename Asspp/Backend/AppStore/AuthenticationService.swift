@@ -48,7 +48,10 @@ extension AppStore {
                 email: account.account.email,
                 password: account.account.password,
                 code: code,
-                cookies: account.account.cookie
+                // A 2FA code starts a new authentication transaction. Reusing
+                // stale challenge cookies after an earlier failed login can be
+                // rejected by Apple with HTTP 403.
+                cookies: code.isEmpty ? account.account.cookie : []
             )
             let updatedAccount = save(email: account.account.email, account: newAppleAccount)
             logger.info("account rotation successful for user id: \(id)")

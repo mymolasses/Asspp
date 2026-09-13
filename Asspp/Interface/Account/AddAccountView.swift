@@ -92,7 +92,7 @@ struct AddAccountView: View {
                     } catch {
                         logger.error("authentication failed: \(error.localizedDescription)")
                         self.error = error
-                        codeRequired = true
+                        codeRequired = error.requiresVerificationCode
                         throw error
                     }
                 } label: {
@@ -121,5 +121,16 @@ struct AddAccountView: View {
             .navigationBarTitleDisplayMode(.inline)
         #endif
             .navigationTitle("Add Account")
+    }
+}
+
+private extension Error {
+    var requiresVerificationCode: Bool {
+        switch self {
+        case ApplePackageError.verificationCodeRequired, ApplePackageError.invalidVerificationCode:
+            true
+        default:
+            false
+        }
     }
 }

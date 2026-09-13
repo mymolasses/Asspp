@@ -39,6 +39,7 @@ public enum Authenticator {
         var pod: String?
         var currentAttempt = 1
         var redirectAttempt = 0
+        var transientAttempt = 0
         var bodies: [Int: Data] = [:]
 
         while currentAttempt <= 3, redirectAttempt <= 3 {
@@ -65,7 +66,8 @@ public enum Authenticator {
                 if let actionSignature {
                     request.headers.add(name: "X-Apple-ActionSignature", value: try await actionSignature(data, bagOutput, deviceIdentifier))
                 }
-                let response = try await sendLoginRequest(client: client, request: request, endpoint: requestEndpoint, cookies: &cookies)
+                let deadline = NIODeadline.now() + .seconds(60)
+                let response: HTTPClient.Response = try await client.execute(request: request, deadline: deadline).get()
                 let result = try parseResponse(
                     response,
                     endpoint: requestEndpoint,
@@ -86,10 +88,16 @@ public enum Authenticator {
                     redirectAttempt += 1
                     continue
                 case .codeRequired:
-                    currentAttempt += 65535 // stop attempts
-                    try ensureFailed(Strings.authRequiresVerificationCode)
+                    throw ApplePackageError.verificationCodeRequired
                 case .retry:
-                    try await Task.sleep(nanoseconds: 250_000_000)
+                    transientAttempt += 1
+                    guard transientAttempt < 3 else {
+                        try ensureFailed("Apple 登录服务暂不可用：HTTP 临时错误已重试 3 次，请稍后重试。")
+                    }
+                    // Keep the same Apple attempt/body but obtain a fresh SAP
+                    // signature for every network retry, as Apple's client does.
+                    currentAttempt -= 1
+                    try await Task.sleep(nanoseconds: UInt64(transientAttempt) * 250_000_000)
                     continue
                 case let .failure(string):
                     try ensureFailed("\(Strings.authFailed): \(string)")
@@ -102,29 +110,6 @@ public enum Authenticator {
         }
 
         try ensureFailed("Apple 登录超过允许的重定向或认证次数，请稍后重试。")
-    }
-
-    private static func sendLoginRequest(client: HTTPClient, request: HTTPClient.Request, endpoint: URL, cookies: inout [Cookie]) async throws -> HTTPClient.Response {
-        let deadline = NIODeadline.now() + .seconds(60)
-        var request = request
-        for attempt in 1...3 {
-            try Task.checkCancellation()
-            let response: HTTPClient.Response = try await client.execute(request: request, deadline: deadline).get()
-            cookies.mergeCookies(response.cookies)
-            let retry = shouldRetryResponse(status: Int(response.status.code),
-                location: response.headers.first(name: "location"),
-                body: response.body.map { Data($0.readableBytesView) })
-            if !retry || attempt == 3 { return response }
-            APLogger.info("auth: retrying anomalous response HTTP \(response.status.code), transport attempt \(attempt)")
-            // Preserve signed XML bytes and signature; carry response cookies
-            // forward just like the reference client's cookie jar.
-            request.headers.remove(name: "Cookie")
-            for (name, value) in cookies.buildCookieHeader(endpoint) {
-                request.headers.add(name: name, value: value)
-            }
-            try await Task.sleep(nanoseconds: UInt64(attempt) * 250_000_000)
-        }
-        try ensureFailed(Strings.authFailedUnknown)
     }
 
     static func shouldRetryResponse(status: Int, location: String?, body: Data?) -> Bool {
@@ -239,7 +224,7 @@ public enum Authenticator {
 
         cookies.mergeCookies(response.cookies)
         if [204, 404, 429, 500, 502, 503, 504].contains(Int(response.status.code)) {
-            return .failure("Apple 登录服务暂不可用：HTTP \(response.status.code)（已重试）。")
+            return .retry
         }
 
         let readStoreFrontValue = response
@@ -283,7 +268,7 @@ public enum Authenticator {
         }
 
         if let failureType = dic["failureType"] as? String, failureType == "5005" {
-            return .failure(Strings.invalid2FACode)
+            throw ApplePackageError.invalidVerificationCode
         }
 
         let failureMessage = (dic["dialog"] as? [String: Any])?["explanation"] as? String ?? (dic["customerMessage"] as? String)
