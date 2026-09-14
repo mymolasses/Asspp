@@ -125,6 +125,12 @@ public enum Authenticator {
     static func shouldRetryResponse(status: Int, location: String?, body: Data?) -> Bool {
         // Populated Apple errors must reach the parser, even on HTTP 429.
         if let body, (try? decodeLoginBody(body, status: status, contentType: nil)) != nil { return false }
+        if [301, 302, 303, 307, 308].contains(status) {
+            // Some Apple edges intermittently return a bare redirect. There is
+            // no safe destination to follow, but repeating the original signed
+            // request on a fresh connection can recover without guessing one.
+            return location?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty != false
+        }
         return [204, 404, 429].contains(status) || (500...599).contains(status)
     }
 

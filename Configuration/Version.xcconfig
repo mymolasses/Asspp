@@ -2,5 +2,5 @@
 // Single source of truth for version numbers
 // CI can modify this file to update version for all configurations
 
-MARKETING_VERSION = 4.3.8
-CURRENT_PROJECT_VERSION = 9
+MARKETING_VERSION = 4.3.9
+CURRENT_PROJECT_VERSION = 10
