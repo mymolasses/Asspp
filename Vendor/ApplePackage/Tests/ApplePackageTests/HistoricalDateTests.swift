@@ -21,14 +21,14 @@ final class HistoricalDateTests: XCTestCase {
 
     func testMalformedLoginResponsesHaveSafeDiagnosticsAndBoundedRetryClassification() {
         for data in [Data(), Data("<html>private-token-do-not-log</html>".utf8)] {
-            XCTAssertTrue(Authenticator.shouldRetryResponse(status: 200, location: nil, body: data))
+            XCTAssertFalse(Authenticator.shouldRetryResponse(status: 200, location: nil, body: data))
             XCTAssertThrowsError(try Authenticator.decodeLoginBody(data, status: 200, contentType: "text/html")) {
                 XCTAssertTrue($0.localizedDescription.contains("HTTP 200"))
                 XCTAssertFalse($0.localizedDescription.contains("private-token-do-not-log"))
             }
         }
-        XCTAssertTrue(Authenticator.shouldRetryResponse(status: 302, location: nil, body: nil))
-        XCTAssertTrue(Authenticator.shouldRetryResponse(status: 302, location: "  ", body: nil))
+        XCTAssertFalse(Authenticator.shouldRetryResponse(status: 302, location: nil, body: nil))
+        XCTAssertFalse(Authenticator.shouldRetryResponse(status: 302, location: "  ", body: nil))
         XCTAssertTrue(Authenticator.shouldRetryResponse(status: 503, location: nil, body: nil))
         XCTAssertFalse(Authenticator.shouldRetryResponse(status: 401, location: nil, body: nil))
         XCTAssertFalse(Authenticator.shouldRetryResponse(status: 302, location: "/auth", body: nil))
@@ -43,6 +43,22 @@ final class HistoricalDateTests: XCTestCase {
         for location in [nil, "", "http://buy.itunes.apple.com/auth", "https://itunes.apple.com.evil.invalid/auth", "https://user:pass@buy.itunes.apple.com/auth", "https://buy.itunes.apple.com:444/auth"] as [String?] {
             XCTAssertThrowsError(try Authenticator.redirectURL(status: 302, location: location, from: base))
         }
+    }
+
+    func testAuthenticationBackoffHonorsAppleDeadline() throws {
+        let native = "https://auth.itunes.apple.com/auth/v1/native"
+        XCTAssertEqual(Bag.normalizedAuthEndpoint(from: native)?.absoluteString, native)
+        XCTAssertEqual(try Authenticator.authenticationRetryDelay(attempt: 1, retryAfter: nil), 10)
+        XCTAssertEqual(try Authenticator.authenticationRetryDelay(attempt: 2, retryAfter: nil), 20)
+        XCTAssertEqual(try Authenticator.authenticationRetryDelay(attempt: 1, retryAfter: "5"), 5)
+        XCTAssertEqual(try Authenticator.authenticationRetryDelay(attempt: 1, retryAfter: "0"), 1)
+        XCTAssertThrowsError(try Authenticator.authenticationRetryDelay(attempt: 1, retryAfter: "31"))
+        let now = Date(timeIntervalSince1970: 0)
+        XCTAssertEqual(try Authenticator.authenticationRetryDelay(attempt: 1, retryAfter: "Thu, 01 Jan 1970 00:00:05 GMT", now: now), 5)
+        XCTAssertFalse(Authenticator.shouldRetryResponse(status: 301, location: nil, body: nil))
+        XCTAssertTrue(Authenticator.shouldRetryResponse(status: 501, location: nil, body: nil))
+        let errorBody = try PropertyListSerialization.data(fromPropertyList: ["failureType": "5005"], format: .xml, options: 0)
+        XCTAssertFalse(Authenticator.shouldRetryResponse(status: 429, location: nil, body: errorBody))
     }
 
     func testSessionExpiryIsTypedForHistoryAndPurchase() {

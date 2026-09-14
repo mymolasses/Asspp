@@ -98,24 +98,13 @@ public enum Bag {
         return output
     }
 
-    /// The bag advertises the native auth endpoint without the `/fast/` sub-path
-    /// that the login flow requires; the no-trailing-slash variant 301s to an
-    /// HTML page. Legacy endpoints pass through unchanged.
-    private static func normalizedAuthEndpoint(from urlString: String) -> URL? {
-        guard var comps = URLComponents(string: urlString),
+    /// Preserve the bag endpoint exactly, as ipatool does. Appending a guessed
+    /// `/fast/` path changes the signed login protocol and may trigger redirects.
+    static func normalizedAuthEndpoint(from urlString: String) -> URL? {
+        guard let comps = URLComponents(string: urlString),
               comps.scheme?.lowercased() == "https", let host = comps.host?.lowercased(),
               host.hasSuffix(".itunes.apple.com"), comps.user == nil, comps.password == nil,
               comps.fragment == nil, comps.port == nil || comps.port == 443 else { return nil }
-        if comps.host == "auth.itunes.apple.com" {
-            var path = comps.path
-            while path.hasSuffix("/") {
-                path.removeLast()
-            }
-            if !path.hasSuffix("/fast") {
-                path += "/fast"
-            }
-            comps.path = path + "/"
-        }
         return comps.url
     }
 

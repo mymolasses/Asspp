@@ -16,6 +16,7 @@ public enum Authenticator {
         case codeRequired
         case redirect(URL)
         case retry
+        case nextAttempt
         case failure(String)
     }
 
@@ -24,16 +25,14 @@ public enum Authenticator {
         password: String,
         code: String = "",
         cookies: [Cookie] = [],
+        onVerificationRequired: (([Cookie]) async -> Void)? = nil,
         actionSignature: ((Data, Bag.BagOutput, String) async throws -> String)? = nil
     ) async throws -> Account {
         let deviceIdentifier = Configuration.deviceIdentifier.uppercased()
 
         let bagOutput = try await Bag.fetchBag()
 
-        let client = Configuration.makeHTTPClient(redirectConfiguration: .disallow)
-        defer { _ = client.shutdown() }
-
-        var requestEndpoint: URL = try createInitialRequestEndpoint(baseURL: bagOutput.authEndpoint, deviceIdentifier: deviceIdentifier)
+        var requestEndpoint = bagOutput.authEndpoint
         var cookies: [Cookie] = cookies
         var storeFront = ""
         var pod: String?
@@ -45,6 +44,10 @@ public enum Authenticator {
         while currentAttempt <= 3, redirectAttempt <= 3 {
             defer { currentAttempt += 1 }
             do {
+                // ipatool 2.6 isolates each authentication connection while
+                // retaining cookies and the SAP signer across requests.
+                let client = Configuration.makeHTTPClient(redirectConfiguration: .disallow)
+                defer { _ = client.shutdown() }
                 let requestAttempt = redirectAttempt > 0 ? 1 : currentAttempt
                 let data: Data
                 if let saved = bodies[requestAttempt] {
@@ -83,12 +86,17 @@ public enum Authenticator {
                 case let .success(account):
                     return account
                 case let .redirect(uRL):
+                    transientAttempt = 0
                     requestEndpoint = uRL
                     currentAttempt -= 1 // allow one more attempt when redirect
                     redirectAttempt += 1
                     continue
                 case .codeRequired:
+                    await onVerificationRequired?(cookies)
                     throw ApplePackageError.verificationCodeRequired
+                case .nextAttempt:
+                    transientAttempt = 0
+                    continue
                 case .retry:
                     transientAttempt += 1
                     guard transientAttempt < 3 else {
@@ -97,7 +105,9 @@ public enum Authenticator {
                     // Keep the same Apple attempt/body but obtain a fresh SAP
                     // signature for every network retry, as Apple's client does.
                     currentAttempt -= 1
-                    try await Task.sleep(nanoseconds: UInt64(transientAttempt) * 250_000_000)
+                    let delay = try authenticationRetryDelay(attempt: transientAttempt,
+                                                            retryAfter: response.headers.first(name: "Retry-After"))
+                    try await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
                     continue
                 case let .failure(string):
                     try ensureFailed("\(Strings.authFailed): \(string)")
@@ -113,20 +123,37 @@ public enum Authenticator {
     }
 
     static func shouldRetryResponse(status: Int, location: String?, body: Data?) -> Bool {
-        if [204, 404, 429, 500, 502, 503, 504].contains(status) { return true }
-        if [301, 302, 303, 307, 308].contains(status) {
-            return location?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty != false
+        // Populated Apple errors must reach the parser, even on HTTP 429.
+        if let body, (try? decodeLoginBody(body, status: status, contentType: nil)) != nil { return false }
+        return [204, 404, 429].contains(status) || (500...599).contains(status)
+    }
+
+    static func authenticationRetryDelay(attempt: Int, retryAfter: String?, now: Date = Date()) throws -> TimeInterval {
+        var requested: TimeInterval?
+        if let value = retryAfter?.trimmingCharacters(in: .whitespacesAndNewlines) {
+            if !value.isEmpty, value.allSatisfy({ $0.isASCII && $0.isNumber }) {
+                requested = Double(value) ?? .infinity
+            } else {
+                let formatter = DateFormatter()
+                formatter.locale = Locale(identifier: "en_US_POSIX")
+                formatter.timeZone = TimeZone(secondsFromGMT: 0)
+                formatter.dateFormat = "EEE, dd MMM yyyy HH:mm:ss zzz"
+                requested = formatter.date(from: value).map { max(0, $0.timeIntervalSince(now)) }
+            }
         }
-        if status == 200 {
-            return (try? decodeLoginBody(body ?? Data(), status: status, contentType: nil)) == nil
+        if let requested {
+            guard requested <= 30 else {
+                try ensureFailed("Apple 要求等待超过 30 秒，请稍后重新登录。")
+            }
+            return max(1, requested)
         }
-        return false
+        return attempt <= 1 ? 10 : 20
     }
 
     static func redirectURL(status: Int, location: String?, from endpoint: URL) throws -> URL? {
         guard [301, 302, 303, 307, 308].contains(status) else { return nil }
         guard let location, !location.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-            try ensureFailed("Apple 登录重定向异常：HTTP \(status) 缺少 Location（已重试）。未发送到任何猜测地址，请稍后重试或检查代理网络。")
+            try ensureFailed("Apple 登录重定向异常：HTTP \(status) 缺少 Location，无法继续验证。请稍后重试。")
         }
         guard let url = URL(string: location.trimmingCharacters(in: .whitespacesAndNewlines), relativeTo: endpoint)?.absoluteURL,
               url.scheme?.lowercased() == "https", let host = url.host?.lowercased(),
@@ -155,17 +182,6 @@ public enum Authenticator {
             cookies: account.cookie
         )
         account = newAccount
-    }
-
-    private static func createInitialRequestEndpoint(
-        baseURL: URL,
-        deviceIdentifier: String
-    ) throws -> URL {
-        guard var comps = URLComponents(url: baseURL, resolvingAgainstBaseURL: true) else {
-            try ensureFailed("\(Strings.invalidAuthEndpoint): \(baseURL)")
-        }
-        comps.queryItems = (comps.queryItems ?? []).filter { $0.name != "guid" } + [URLQueryItem(name: "guid", value: deviceIdentifier)]
-        return try comps.url.get()
     }
 
     private static func makeRequest(
@@ -223,7 +239,8 @@ public enum Authenticator {
         )
 
         cookies.mergeCookies(response.cookies)
-        if [204, 404, 429, 500, 502, 503, 504].contains(Int(response.status.code)) {
+        let responseData = response.body.map { Data($0.readableBytesView) }
+        if shouldRetryResponse(status: Int(response.status.code), location: response.headers.first(name: "location"), body: responseData) {
             return .retry
         }
 
@@ -251,11 +268,8 @@ public enum Authenticator {
         }
 
         let dic = try decodeLoginBody(data, status: Int(response.status.code), contentType: response.headers.first(name: "content-type"))
-        guard response.status == .ok else {
-            return .failure("Apple 登录服务返回 HTTP \(response.status.code)。")
-        }
         if attempt == 1, dic["failureType"] as? String == "-5000" {
-            return .retry
+            return .nextAttempt
         }
 
         if let failureType = dic["failureType"] as? String,
@@ -269,6 +283,10 @@ public enum Authenticator {
 
         if let failureType = dic["failureType"] as? String, failureType == "5005" {
             throw ApplePackageError.invalidVerificationCode
+        }
+
+        guard response.status == .ok else {
+            return .failure("Apple 登录服务返回 HTTP \(response.status.code)。")
         }
 
         let failureMessage = (dic["dialog"] as? [String: Any])?["explanation"] as? String ?? (dic["customerMessage"] as? String)

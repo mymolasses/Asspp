@@ -2,6 +2,19 @@ import ApplePackage
 import Foundation
 
 enum LocalSAPAuthenticator {
+    // Challenge cookies are memory-only, account-scoped and short lived.
+    private actor Challenges {
+        private var values: [String: (Date, [Cookie])] = [:]
+        func take(_ key: String) -> [Cookie]? {
+            guard let value = values.removeValue(forKey: key), Date().timeIntervalSince(value.0) < 300 else { return nil }
+            return value.1
+        }
+        func save(_ cookies: [Cookie], for key: String) {
+            values = values.filter { Date().timeIntervalSince($0.value.0) < 300 }
+            values[key] = (Date(), cookies)
+        }
+    }
+    private static let challenges = Challenges()
     private static let signingQueue = DispatchQueue(label: "wiki.qaq.Asspp.localSAP", qos: .userInitiated)
     private struct SignRequest: Encodable {
         let setup: String
@@ -22,6 +35,10 @@ enum LocalSAPAuthenticator {
     }
 
     static func authenticate(email: String, password: String, code: String, cookies: [Cookie]) async throws -> Account {
+        let key = email.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() + ":" + Configuration.deviceIdentifier
+        let previousChallenge = await challenges.take(key)
+        let normalizedCode = code.filter { !$0.isWhitespace }
+        let loginCookies = normalizedCode.isEmpty ? cookies : (previousChallenge ?? cookies)
         // Resolve this for each login: LiveContainer can relocate the sandbox
         // and does not necessarily export HOME to the embedded Go runtime.
         let cacheDirectory = try FileManager.default.url(for: .cachesDirectory, in: .userDomainMask,
@@ -36,7 +53,8 @@ enum LocalSAPAuthenticator {
                 if let result = input.withCString({ AssppSAPSign($0) }) { AssppSAPFree(result) }
             }
         }
-        return try await Authenticator.authenticate(email: email, password: password, code: code.filter { !$0.isWhitespace }, cookies: cookies) { body, bag, device in
+        return try await Authenticator.authenticate(email: email, password: password, code: normalizedCode, cookies: loginCookies,
+            onVerificationRequired: { cookies in await challenges.save(cookies, for: key) }) { body, bag, device in
             guard let setup = bag.sapSetup, let certificate = bag.sapCertificate, let version = bag.sapVersion,
                   trustedAppleURL(setup), trustedAppleURL(certificate) else {
                 throw Failure(message: "Apple bag 缺少有效的本地 SAP 配置。")
