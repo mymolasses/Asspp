@@ -59,11 +59,11 @@ extension AppStore {
                 throw ApplePackageError.verificationCodeRequired
             } catch ApplePackageError.invalidVerificationCode {
                 throw ApplePackageError.invalidVerificationCode
-            } catch is ApplePackageError {
+            } catch let classifiedError as ApplePackageError {
                 // Apple already classified this response. Retrying with a
                 // second cookie jar would hide the useful error and repeat a
                 // request that cannot succeed without user action.
-                throw error
+                throw classifiedError
             } catch where code.isEmpty {
                 // Match AssppWeb's current behavior: old cookies can send a
                 // valid password to a stale Apple challenge and get 301/403.
