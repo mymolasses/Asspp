@@ -1,8 +1,6 @@
 name: History regression tests
 on:
   workflow_dispatch:
-  push:
-    branches: [main, codex/local-sap-tci]
 permissions:
   contents: read
 jobs:

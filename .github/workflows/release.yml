@@ -1,10 +1,10 @@
 name: Release
 
 on:
-  workflow_dispatch:
   push:
     tags:
-      - "*"
+      - "[0-9]*"
+      - "v[0-9]*"
 
 permissions:
   contents: write
@@ -51,6 +51,9 @@ jobs:
 
       - name: Ensure iOS platform is installed
         run: xcodebuild -downloadPlatform iOS || true
+
+      - name: Run authentication and history regression tests
+        run: swift test --package-path Vendor/ApplePackage --filter HistoricalDateTests
 
       - name: Install Procursus
         uses: dhinakg/procursus-action@main

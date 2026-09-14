@@ -1,8 +1,6 @@
 name: Local SAP iOS App
 on:
   workflow_dispatch:
-  push:
-    branches: [codex/local-sap-tci]
 permissions:
   contents: read
 jobs:
