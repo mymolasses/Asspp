@@ -58,8 +58,14 @@ jobs:
       - name: Check device static library architectures
         run: |
           set -euo pipefail
-          xcrun lipo -verify_arch arm64 "$RUNNER_TEMP/local-sap/libasspp-sap.a"
-          xcrun lipo -verify_arch arm64 "$RUNNER_TEMP/local-sap/libunicorn.a"
+          xcrun lipo "$RUNNER_TEMP/local-sap/libasspp-sap.a" -verify_arch arm64
+          xcrun lipo "$RUNNER_TEMP/local-sap/libunicorn.a" -verify_arch arm64
+      - uses: actions/upload-artifact@v4
+        with:
+          name: LocalSAP-ios-arm64-${{ github.run_number }}
+          if-no-files-found: error
+          retention-days: 14
+          path: ${{ runner.temp }}/local-sap/
       - name: Build iOS App
         env:
           LOCAL_SAP_LIBRARY_DIR: ${{ runner.temp }}/local-sap
@@ -95,9 +101,3 @@ jobs:
           path: |
             ${{ runner.temp }}/Asspp-features-unsigned.ipa
             ${{ runner.temp }}/Asspp-features-unsigned.ipa.sha256
-      - uses: actions/upload-artifact@v4
-        with:
-          name: LocalSAP-ios-arm64-${{ github.run_number }}
-          if-no-files-found: error
-          retention-days: 14
-          path: ${{ runner.temp }}/local-sap/
