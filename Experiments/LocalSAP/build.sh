@@ -1,13 +1,23 @@
 #!/bin/bash
 set -euo pipefail
 repo="$(cd "$(dirname "$0")/../.." && pwd)"
-stage="$(mktemp -d "${TMPDIR:-/tmp}/asspp-sap.XXXXXX")"
+stage="${ASSPP_SAP_BUILD_DIR:-$(mktemp -d "${TMPDIR:-/tmp}/asspp-sap.XXXXXX")}"
 output="${1:?output directory required}"
-mkdir -p "$output"
-git clone --quiet https://github.com/majd/ipatool.git "$stage/ipatool"
-git -C "$stage/ipatool" checkout --quiet a9bd16c9a211c556650e206245ff34115c725e12
-git clone --quiet https://github.com/Naville/unicorn.git "$stage/unicorn"
-git -C "$stage/unicorn" checkout --quiet 53471ef9cf480fab094bf13db3e5d2f9e2c30dc5
+mkdir -p "$stage" "$output"
+stage="$(cd "$stage" && pwd)"
+output="$(cd "$output" && pwd)"
+fetch_source() {
+    local url="$1" revision="$2" directory="$3"
+    if [ "$(git -C "$directory" rev-parse HEAD 2>/dev/null || true)" = "$revision" ]; then return; fi
+    if [ ! -d "$directory/.git" ]; then
+        git init --quiet "$directory"
+        git -C "$directory" remote add origin "$url"
+    fi
+    git -C "$directory" -c http.version=HTTP/1.1 fetch --quiet --depth=1 origin "$revision"
+    git -C "$directory" checkout --quiet --detach FETCH_HEAD
+}
+fetch_source https://github.com/majd/ipatool.git a9bd16c9a211c556650e206245ff34115c725e12 "$stage/ipatool"
+fetch_source https://github.com/Naville/unicorn.git 53471ef9cf480fab094bf13db3e5d2f9e2c30dc5 "$stage/unicorn"
 # Stage only SAP packages: no desktop keychain, CLI or subprocess dependencies.
 mkdir -p "$stage/module/internal/sap" "$stage/module/bridge"
 mkdir -p "$stage/module/pkg"

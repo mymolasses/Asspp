@@ -27,6 +27,11 @@ struct ArchivePreviewView: View {
     var body: some View {
         HStack(spacing: 8) {
             KFImage(URL(string: archive.software.artworkUrl))
+                .placeholder {
+                    Image(systemName: "shippingbox.fill")
+                        .resizable().scaledToFit().padding(10)
+                        .foregroundStyle(.secondary)
+                }
                 // Downsample the 512x512 artwork to the cell size instead of
                 // decoding it at full resolution for a ~50pt icon.
                 .setProcessor(DownsamplingImageProcessor(size: CGSize(width: iconSize, height: iconSize)))

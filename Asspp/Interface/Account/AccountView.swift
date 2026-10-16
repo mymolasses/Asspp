@@ -11,15 +11,34 @@ import SwiftUI
 struct AccountView: View {
     @ObservedObject private var vm = AppStore.this
     @State private var addAccount = false
+    @State private var transferMode: AccountTransferView.Mode?
+    @State private var query = ""
+
+    private var filteredAccounts: [AppStore.UserAccount] {
+        vm.accounts.filter { query.isEmpty || $0.id.localizedStandardContains(query) || $0.regionName.localizedStandardContains(query) }
+    }
     @State private var selectedID: AppStore.UserAccount.ID?
     @State private var navigationPath = NavigationPath()
 
     var body: some View {
-        #if os(macOS)
-            macOSBody
-        #else
-            iOSBody
-        #endif
+        Group {
+            #if os(macOS)
+                macOSBody
+            #else
+                iOSBody
+            #endif
+        }
+        .sheet(item: $transferMode) { AccountTransferView(mode: $0) }
+    }
+
+    private var transferMenu: some View {
+        Menu {
+            Button { transferMode = .importBackup } label: { Label("Import Accounts", systemImage: "square.and.arrow.down") }
+            Button { transferMode = .exportBackup } label: { Label("Export Accounts", systemImage: "square.and.arrow.up") }
+                .disabled(vm.accounts.isEmpty)
+        } label: {
+            Label("Account Backup", systemImage: "arrow.up.arrow.down")
+        }
     }
 
     #if os(macOS)
@@ -29,6 +48,7 @@ struct AccountView: View {
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
                     .navigationTitle("Accounts")
                     .toolbar { macToolbar }
+                    .searchable(text: $query, prompt: "Search Accounts")
             }
             .sheet(isPresented: $addAccount) {
                 AddAccountView()
@@ -38,7 +58,7 @@ struct AccountView: View {
         }
 
         private var accountsTable: some View {
-            Table(vm.accounts, selection: $selectedID) {
+            Table(filteredAccounts, selection: $selectedID) {
                 TableColumn("Email") { account in
                     Text(account.account.email)
                         .redacted(reason: .placeholder, isEnabled: vm.demoMode)
@@ -51,9 +71,14 @@ struct AccountView: View {
                 .width(min: 40, ideal: 60, max: 80)
 
                 TableColumn("Storefront") { account in
-                    Text(account.regionName)
+                    Text(account.account.store)
                 }
                 .width(min: 60, ideal: 80, max: 120)
+
+                TableColumn("Session") { account in
+                    AccountSessionLabel(accountID: account.id)
+                }
+                .width(min: 90, ideal: 120)
 
                 TableColumn("") { account in
                     Button {
@@ -77,7 +102,9 @@ struct AccountView: View {
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .overlay {
-                if vm.accounts.isEmpty {
+                if !vm.accounts.isEmpty, filteredAccounts.isEmpty {
+                    Text("No Matching Accounts").foregroundStyle(.secondary)
+                } else if vm.accounts.isEmpty {
                     UnavailableView(
                         label: {
                             Label("No Accounts", systemImage: "person.crop.circle.badge.questionmark")
@@ -87,6 +114,7 @@ struct AccountView: View {
                         },
                         actions: {
                             Button("Add Account") { addAccount.toggle() }
+                            Button("Import Accounts") { transferMode = .importBackup }
                         },
                     )
                     .padding()
@@ -106,6 +134,7 @@ struct AccountView: View {
 
         @ToolbarContentBuilder
         private var macToolbar: some ToolbarContent {
+            ToolbarItem(placement: .primaryAction) { transferMenu }
             ToolbarItem(placement: .primaryAction) {
                 Button {
                     addAccount.toggle()
@@ -130,16 +159,23 @@ struct AccountView: View {
                             },
                             actions: {
                                 Button("Add Account") { addAccount.toggle() }
+                                Button("Import Accounts") { transferMode = .importBackup }
                             },
                         )
                     } else {
                         Form {
                             Section {
-                                ForEach(vm.accounts) { account in
+                                if filteredAccounts.isEmpty { Text("No Matching Accounts").foregroundStyle(.secondary) }
+                                ForEach(filteredAccounts) { account in
                                     NavigationLink(value: account.id) {
                                         HStack {
-                                            Text(account.account.email)
-                                                .redacted(reason: .placeholder, isEnabled: vm.demoMode)
+                                            VStack(alignment: .leading, spacing: 4) {
+                                                Text(account.account.email)
+                                                    .lineLimit(1).truncationMode(.middle)
+                                                    .redacted(reason: .placeholder, isEnabled: vm.demoMode)
+                                                AccountSessionLabel(accountID: account.id)
+                                                    .font(.caption)
+                                            }
                                             Spacer()
                                         }
                                         .badge(account.regionName)
@@ -158,7 +194,9 @@ struct AccountView: View {
                     AccountDetailView(accountId: id)
                 }
                 .navigationTitle("Accounts")
+                .searchable(text: $query, prompt: "Search Accounts")
                 .toolbar {
+                    ToolbarItem { transferMenu }
                     ToolbarItem {
                         Button {
                             addAccount.toggle()
@@ -175,4 +213,21 @@ struct AccountView: View {
             }
         }
     #endif
+}
+
+struct AccountSessionLabel: View {
+    let accountID: String
+    @ObservedObject private var store = AppStore.this
+
+    var body: some View {
+        if store.refreshingAccountIDs.contains(accountID) {
+            Label("Refreshing", systemImage: "arrow.clockwise").foregroundStyle(.secondary)
+        } else if store.sessionErrors[accountID] != nil {
+            Label("Sign In Required", systemImage: "exclamationmark.circle").foregroundStyle(.orange)
+        } else if store.verifiedAccountIDs.contains(accountID) {
+            Label("Verified", systemImage: "checkmark.circle").foregroundStyle(.green)
+        } else {
+            Label("Not Yet Checked", systemImage: "questionmark.circle").foregroundStyle(.secondary)
+        }
+    }
 }

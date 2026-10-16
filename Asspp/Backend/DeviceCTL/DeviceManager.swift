@@ -68,12 +68,18 @@
             return result
         }
 
-        func markAppAsInstalled(package: AppStore.AppPackage, account: Account, to device: DeviceCTL.Device) {
-            installedApps[device.id, default: []].insert(InstalledAppInfo(
+        func markAppAsInstalled(package: AppStore.AppPackage, account: PackageManifest.AccountSummary?, to device: DeviceCTL.Device) {
+            guard let account else {
+                // A locally imported replacement has no App Store account for
+                // updates, including when this bundle was previously tracked.
+                installedApps[device.id] = installedApps[device.id, default: []].filter { $0.id != package.id }
+                return
+            }
+            installedApps[device.id, default: []].update(with: InstalledAppInfo(
                 package: package,
-                storeID: account.store,
-                region: ApplePackage.Configuration.countryCode(for: account.store) ?? "--",
-                accountID: account.appleId,
+                storeID: account.account.store,
+                region: account.regionCode,
+                accountID: account.id,
             ))
         }
 

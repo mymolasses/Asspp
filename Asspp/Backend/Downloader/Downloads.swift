@@ -54,6 +54,9 @@ class Downloads: ObservableObject {
     private init() {
         for idx in manifests.indices {
             manifests[idx].state.resetIfNotCompleted()
+            if manifests[idx].isLocal, !FileManager.default.fileExists(atPath: manifests[idx].targetLocation.path) {
+                manifests[idx].state.error = String(localized: "The imported IPA file is missing. Import it again.")
+            }
         }
         refreshRunningTaskCount()
     }
@@ -74,6 +77,7 @@ class Downloads: ObservableObject {
     }
 
     func suspend(request: PackageManifest) {
+        guard !request.isLocal else { return }
         logger.info("suspending download request id: \(request.id)")
         DiggerManager.shared.stopTask(for: request.url)
         request.state.resetIfNotCompleted()
@@ -82,6 +86,7 @@ class Downloads: ObservableObject {
     }
 
     func resume(request: PackageManifest) {
+        guard !request.isLocal else { return }
         logger.info("resuming download request id: \(request.id)")
         request.state.start()
         let seed = DiggerManager.shared.download(with: request.url)
@@ -191,7 +196,7 @@ class Downloads: ObservableObject {
 
     func delete(request: PackageManifest) {
         logger.info("deleting download request id: \(request.id)")
-        DiggerManager.shared.cancelTask(for: request.url)
+        if !request.isLocal { DiggerManager.shared.cancelTask(for: request.url) }
         registeredCallbacks.remove(request.id)
         request.delete()
         manifests.removeAll(where: { $0.id == request.id })
@@ -199,6 +204,7 @@ class Downloads: ObservableObject {
     }
 
     func restart(request: PackageManifest) {
+        guard !request.isLocal else { return }
         logger.info("restarting download request id: \(request.id)")
         DiggerManager.shared.cancelTask(for: request.url)
         registeredCallbacks.remove(request.id)

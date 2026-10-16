@@ -19,12 +19,18 @@ public enum Configuration {
      **It is a must set value before any network request**
      **otherwise your account may be locked for security reason**
      */
-    public static var deviceIdentifier: String = (try? DeviceIdentifier.system()) ?? "" {
-        didSet {
-            assert(!deviceIdentifier.contains(":"))
-            assert(!deviceIdentifier.contains("-"))
-            assert(!deviceIdentifier.contains(" "))
-            assert(!deviceIdentifier.contains("\n"))
+    @TaskLocal public static var accountDeviceIdentifier: String?
+
+    private static var defaultDeviceIdentifier: String = (try? DeviceIdentifier.system()) ?? ""
+
+    public static var deviceIdentifier: String {
+        get { accountDeviceIdentifier ?? defaultDeviceIdentifier }
+        set {
+            assert(!newValue.contains(":"))
+            assert(!newValue.contains("-"))
+            assert(!newValue.contains(" "))
+            assert(!newValue.contains("\n"))
+            defaultDeviceIdentifier = newValue
         }
     }
 

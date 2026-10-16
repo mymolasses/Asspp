@@ -15,6 +15,7 @@ extension AppStore {
         }
 
         var account: ApplePackage.Account
+        var deviceIdentifier: String?
 
         var regionName: String {
             Self.regionName(for: ApplePackage.Configuration.countryCode(for: account.store) ?? account.store)
@@ -24,8 +25,9 @@ extension AppStore {
             Locale(identifier: "zh_Hans").localizedString(forRegionCode: code.uppercased()) ?? code
         }
 
-        init(account: ApplePackage.Account) {
+        init(account: ApplePackage.Account, deviceIdentifier: String? = nil) {
             self.account = account
+            self.deviceIdentifier = deviceIdentifier
         }
 
         static func == (lhs: UserAccount, rhs: UserAccount) -> Bool {

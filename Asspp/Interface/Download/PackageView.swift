@@ -18,7 +18,7 @@ struct PackageView: View {
     @ObservedObject var pkg: PackageManifest
 
     var archive: AppStore.AppPackage {
-        pkg.package
+        pkg.displayPackage
     }
 
     var url: URL {
@@ -28,11 +28,15 @@ struct PackageView: View {
     @Environment(\.dismiss) var dismiss
     #if os(iOS)
         @State private var installer: Installer?
-        @State private var error: String = ""
     #endif
     #if os(macOS)
         @State private var copied = false
     #endif
+
+    @State private var error = ""
+    @State private var displayName = ""
+    @State private var confirmDelete = false
+    @State private var signingHint = ""
 
     @ObservedObject private var vm = AppStore.this
     @ObservedObject private var downloads = Downloads.this
@@ -65,6 +69,35 @@ struct PackageView: View {
                 Text("Details")
             }
 
+            if let info = pkg.localIPA {
+                Section {
+                    TextField("Display Name (Optional)", text: $displayName)
+                        .onSubmit { downloads.renameLocalIPA(pkg, to: displayName) }
+                        .onChange(of: displayName) { name in
+                            if name.count > 120 { displayName = String(name.prefix(120)) }
+                        }
+                    Button("Save Display Name") { downloads.renameLocalIPA(pkg, to: displayName) }
+                    CopyableRow(label: "Original App Name", value: info.name)
+                    CopyableRow(label: "Original File", value: info.originalFileName)
+                    LabeledContent("Build Version", value: info.buildVersion)
+                    LabeledContent("File Size", value: ByteCountFormatter.string(fromByteCount: info.fileSize, countStyle: .file))
+                    AsyncButton {
+                        error = ""
+                        signingHint = ""
+                        do {
+                            try await downloads.refreshLocalIPAInfo(pkg)
+                            signingHint = String(localized: "Signing information updated.")
+                        } catch {
+                            self.error = error.localizedDescription
+                            throw error
+                        }
+                    } label: { Text("Check Signing Information") }
+                    .disabledWhenLoading()
+                    if !signingHint.isEmpty { Text(signingHint).foregroundStyle(.green) }
+                } header: { Text("Local IPA") }
+                IPASigningSection(info: info)
+            }
+
             if pkg.completed {
                 #if os(macOS)
                     DeviceCTLInstallSection(package: pkg)
@@ -72,7 +105,12 @@ struct PackageView: View {
                 #if os(iOS)
                     Section {
                         AsyncButton {
-                            installer = try await Installer(archive: archive, path: url)
+                            do {
+                                installer = try await Installer(archive: archive, path: url, bundleVersion: pkg.installationBundleVersion)
+                            } catch {
+                                self.error = error.localizedDescription
+                                throw error
+                            }
                         } label: {
                             Text("Install")
                         }
@@ -86,11 +124,15 @@ struct PackageView: View {
 
                         Button("Install via AirDrop") {
                             let newUrl = temporaryDirectory
-                                .appendingPathComponent("\(archive.software.bundleID)-\(archive.software.version)")
+                                .appendingPathComponent(pkg.id.uuidString)
                                 .appendingPathExtension("ipa")
-                            try? FileManager.default.removeItem(at: newUrl)
-                            try? FileManager.default.copyItem(at: url, to: newUrl)
-                            AirDrop(items: [newUrl])
+                            do {
+                                if FileManager.default.fileExists(atPath: newUrl.path) {
+                                    try FileManager.default.removeItem(at: newUrl)
+                                }
+                                try FileManager.default.copyItem(at: url, to: newUrl)
+                                AirDrop(items: [newUrl])
+                            } catch { self.error = error.localizedDescription }
                         }
                     } header: {
                         Text("Control")
@@ -105,6 +147,7 @@ struct PackageView: View {
                 #endif
 
                 Section {
+                    ShareLink(item: url) { Label("Share IPA", systemImage: "square.and.arrow.up") }
                     NavigationLink("Content Viewer") {
                         FileListView(packageURL: pkg.targetLocation)
                     }
@@ -180,22 +223,35 @@ struct PackageView: View {
                 }
             }
 
-            Section {
-                Text(pkg.account.account.email)
-                    .redacted(reason: .placeholder, isEnabled: vm.demoMode)
-                Text(pkg.account.regionName)
-            } header: {
-                Text("Account")
-            } footer: {
-                Text("This account is used to download this package. If you choose to AirDrop, your target device must sign in or previously signed in to this account and have at least one app installed.")
+            if let account = pkg.account {
+                Section {
+                    Text(account.account.email)
+                        .redacted(reason: .placeholder, isEnabled: vm.demoMode)
+                    Text(account.regionName)
+                } header: {
+                    Text("Account")
+                } footer: {
+                    Text("This account is used to download this package. If you choose to AirDrop, your target device must sign in or previously signed in to this account and have at least one app installed.")
+                }
+
+            } else {
+                Section {
+                    Label("Imported from Files", systemImage: "folder")
+                } header: { Text("Source") }
+            }
+
+            if let failure = pkg.state.error {
+                Section { Text(failure).foregroundStyle(.red).textSelection(.enabled) }
+            }
+            if !error.isEmpty {
+                Section { Text(error).foregroundStyle(.red).textSelection(.enabled) }
             }
 
             Section {
                 let deleteAction = DownloadAction.delete
                 let label = downloads.getActionLabel(for: deleteAction)
                 Button(label.title) {
-                    Task { downloads.performDownloadAction(for: pkg, action: deleteAction) }
-                    dismiss()
+                    confirmDelete = true
                 }
                 .foregroundStyle(label.isDestructive ? .red : .primary)
             } header: {
@@ -205,6 +261,13 @@ struct PackageView: View {
             }
         }
         .formStyle(.grouped)
-        .navigationTitle(pkg.package.software.name)
+        .navigationTitle(pkg.displayPackage.software.name)
+        .onAppear { displayName = pkg.displayName }
+        .confirmationDialog("Delete this package and its file?", isPresented: $confirmDelete, titleVisibility: .visible) {
+            Button("Delete", role: .destructive) {
+                downloads.delete(request: pkg)
+                dismiss()
+            }
+        }
     }
 }

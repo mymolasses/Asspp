@@ -21,6 +21,8 @@ struct SettingView: View {
     @State private var editingDeviceId = false
     @State private var deviceIdDraft = ""
     @State private var showResetConfirmation = false
+    @State private var showDeleteDownloadsConfirmation = false
+    @State private var transferMode: AccountTransferView.Mode?
 
     var body: some View {
         NavigationStack {
@@ -45,12 +47,22 @@ struct SettingView: View {
             Section {
                 Toggle("Demo Mode", isOn: $vm.demoMode)
                 Button("Delete All Downloads", role: .destructive) {
-                    Downloads.this.removeAll()
+                    showDeleteDownloadsConfirmation = true
                 }
             } header: {
                 Text("General")
             } footer: {
                 Text("Demo mode redacts all accounts and sensitive information.")
+            }
+
+            Section {
+                Button { transferMode = .importBackup } label: { Label("Import Accounts", systemImage: "square.and.arrow.down") }
+                Button { transferMode = .exportBackup } label: { Label("Export Accounts", systemImage: "square.and.arrow.up") }
+                    .disabled(vm.accounts.isEmpty)
+            } header: {
+                Text("Account Backup")
+            } footer: {
+                Text("Compatible with AssppWeb encrypted backups")
             }
 
             Section {
@@ -148,6 +160,10 @@ struct SettingView: View {
         }
         .formStyle(.grouped)
         .navigationTitle("Settings")
+        .sheet(item: $transferMode) { AccountTransferView(mode: $0) }
+        .confirmationDialog("Delete all downloaded and imported packages?", isPresented: $showDeleteDownloadsConfirmation, titleVisibility: .visible) {
+            Button("Delete All Downloads", role: .destructive) { Downloads.this.removeAll() }
+        }
         .toolbar {
             ToolbarItem(placement: .confirmationAction) {
                 NavigationLink {

@@ -97,7 +97,7 @@
                 guard installSuccess else {
                     return
                 }
-                dm.markAppAsInstalled(package: package.package, account: package.account.account, to: device)
+                dm.markAppAsInstalled(package: package.package, account: package.account, to: device)
                 await fetchInstalledApp()
                 try? await Task.sleep(for: .seconds(1))
                 installSuccess = false // hide symbol

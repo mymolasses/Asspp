@@ -73,14 +73,14 @@ class AppStore: ObservableObject {
                 deviceIdentifier = randomIdentifier
             }
         }
-        logger.info("using device identifier: \(deviceIdentifier)")
+        logger.info("device identifier configured")
         ApplePackage.Configuration.deviceIdentifier = deviceIdentifier
     }
 
     @discardableResult
     func save(email: String, account: ApplePackage.Account) -> UserAccount {
         logger.info("saving account for user")
-        let account = UserAccount(account: account)
+        let account = UserAccount(account: account, deviceIdentifier: ApplePackage.Configuration.deviceIdentifier)
         accounts = (accounts.filter { $0.account.email != email } + [account])
             .sorted { $0.account.email < $1.account.email }
         sessionErrors.removeValue(forKey: account.id)
@@ -91,6 +91,8 @@ class AppStore: ObservableObject {
     func delete(id: UserAccount.ID) {
         logger.info("deleting account id: \(id)")
         accounts = accounts.filter { $0.id != id }
+        verifiedAccountIDs.remove(id)
+        sessionErrors.removeValue(forKey: id)
     }
 
     var possibleRegions: Set<String> {
@@ -118,14 +120,19 @@ class AppStore: ObservableObject {
         }
         var account = original
         let result: Result<T, Error>
-        do { result = .success(try await body(&account)) }
+        do {
+            result = .success(try await ApplePackage.Configuration.$accountDeviceIdentifier.withValue(original.deviceIdentifier) {
+                try await body(&account)
+            })
+        }
         catch { result = .failure(error) }
         let updatedAccount = account
         await MainActor.run {
             // A slow request must not overwrite a newer login/session. Compare
             // Apple Account, not UserAccount (whose equality is identity only).
             guard let idx = accounts.firstIndex(where: { $0.id == id }),
-                  accounts[idx].account == original.account else { return }
+                  accounts[idx].account == original.account,
+                  accounts[idx].deviceIdentifier == original.deviceIdentifier else { return }
             if updatedAccount.account != original.account {
                 accounts[idx] = updatedAccount
             }

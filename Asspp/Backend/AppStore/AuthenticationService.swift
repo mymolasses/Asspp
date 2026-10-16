@@ -43,6 +43,13 @@ extension AppStore {
             logger.error("account not found for rotation, id: \(id)")
             throw AuthenticationError.accountNotFound
         }
+        return try await ApplePackage.Configuration.$accountDeviceIdentifier.withValue(account.deviceIdentifier) {
+            try await rotate(account: account, code: code)
+        }
+    }
+
+    private func rotate(account: UserAccount, code: String) async throws -> UserAccount? {
+        let id = account.id
         do {
             var newAppleAccount: ApplePackage.Account
             do {
@@ -76,6 +83,10 @@ extension AppStore {
                     code: "",
                     cookies: []
                 )
+            }
+            guard let current = accounts.first(where: { $0.id == id }), current.account == account.account,
+                  current.deviceIdentifier == account.deviceIdentifier else {
+                return nil
             }
             let updatedAccount = save(email: account.account.email, account: newAppleAccount)
             logger.info("account rotation successful for user id: \(id)")

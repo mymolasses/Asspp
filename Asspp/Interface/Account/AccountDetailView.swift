@@ -19,6 +19,9 @@ struct AccountDetailView: View {
         vm.accounts.first { $0.id == accountId }
     }
 
+    @State private var showExport = false
+    @State private var confirmDelete = false
+
     @State private var rotatingHint = ""
     @State private var verificationCode = ""
     @State private var needsVerificationCode = false
@@ -106,15 +109,23 @@ struct AccountDetailView: View {
                 }
             }
             Section {
-                Button("Delete") {
-                    vm.delete(id: account?.id ?? "")
-                    dismiss()
-                }
-                .foregroundStyle(.red)
+                AccountSessionLabel(accountID: accountId)
+                Button("Export Account") { showExport = true }
+                Button("Delete", role: .destructive) { confirmDelete = true }
+                    .disabled(vm.refreshingAccountIDs.contains(accountId))
             }
         }
         .formStyle(.grouped)
         .navigationTitle("Account Details")
+        .sheet(isPresented: $showExport) {
+            AccountTransferView(mode: .exportBackup, accountIDs: [accountId])
+        }
+        .confirmationDialog("Delete this account?", isPresented: $confirmDelete, titleVisibility: .visible) {
+            Button("Delete", role: .destructive) {
+                vm.delete(id: accountId)
+                dismiss()
+            }
+        }
         .onAppear {
             // A failed automatic refresh may already have requested a 2FA code.
             needsVerificationCode = false

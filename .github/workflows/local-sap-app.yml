@@ -1,24 +1,103 @@
 name: Local SAP iOS App
+run-name: Test IPA · ${{ github.ref_name }} · ${{ github.run_number }}
 on:
   workflow_dispatch:
+  push:
+    branches:
+      - codex/account-backup-local-ipa
 permissions:
   contents: read
+concurrency:
+  group: local-sap-ios-${{ github.ref }}
+  cancel-in-progress: true
 jobs:
   build:
     runs-on: macos-26
-    timeout-minutes: 50
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
+      - name: Select newest non-beta Xcode
+        run: |
+          set -euo pipefail
+          best_path=""
+          best_ver=""
+          for app in /Applications/Xcode*.app; do
+            [ -d "$app" ] || continue
+            case "$(printf '%s' "$app" | tr '[:upper:]' '[:lower:]')" in
+              *beta*|*_rc*) continue ;;
+            esac
+            ver="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$app/Contents/Info.plist" 2>/dev/null || true)"
+            [ -n "$ver" ] || continue
+            if [ -z "$best_ver" ] || [ "$(printf '%s\n%s\n' "$best_ver" "$ver" | sort -V | tail -1)" = "$ver" ]; then
+              best_ver="$ver"
+              best_path="$app"
+            fi
+          done
+          [ -n "$best_path" ] || { echo "::error::No non-beta Xcode found"; exit 1; }
+          sudo xcode-select -s "$best_path"
+          xcodebuild -version
       - uses: actions/setup-go@v5
         with:
           go-version: '1.25.7'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Prepare build tools
+        run: |
+          set -euo pipefail
+          python3 -m venv "$RUNNER_TEMP/asspp-build-tools"
+          "$RUNNER_TEMP/asspp-build-tools/bin/python" -m pip install --disable-pip-version-check 'cmake==3.31.6'
+          echo "$RUNNER_TEMP/asspp-build-tools/bin" >> "$GITHUB_PATH"
+          if ! command -v xcbeautify >/dev/null; then brew install xcbeautify; fi
+      - name: Test account backups and local IPA features
+        run: |
+          python3 Tests/Scripts/test_release_packaging.py
+          bash Resources/Scripts/test.features.sh
       - name: Build and test local SAP bridge
         run: bash Experiments/LocalSAP/build.sh "$RUNNER_TEMP/local-sap"
+      - name: Check device static library architectures
+        run: |
+          set -euo pipefail
+          xcrun lipo -verify_arch arm64 "$RUNNER_TEMP/local-sap/libasspp-sap.a"
+          xcrun lipo -verify_arch arm64 "$RUNNER_TEMP/local-sap/libunicorn.a"
       - name: Build iOS App
         env:
           LOCAL_SAP_LIBRARY_DIR: ${{ runner.temp }}/local-sap
-        run: bash Resources/Scripts/compile.release.mobile.ci.sh "$(pwd)" "$RUNNER_TEMP/Asspp-4.3.11-local.ipa"
+        run: zsh Resources/Scripts/compile.release.mobile.ci.sh "$(pwd)" "$RUNNER_TEMP/Asspp-features-unsigned.ipa"
+      - name: Verify IPA package and create checksum
+        run: |
+          python3 - <<'PY'
+          import hashlib, os, pathlib, plistlib, struct, zipfile
+          ipa = pathlib.Path(os.environ['RUNNER_TEMP']) / 'Asspp-features-unsigned.ipa'
+          with zipfile.ZipFile(ipa) as archive:
+              assert archive.testzip() is None, 'IPA ZIP integrity check failed'
+              root = 'Payload/Asspp.app/'
+              info = plistlib.loads(archive.read(root + 'Info.plist'))
+              assert info['CFBundleIdentifier'] == 'wiki.qaq.Asspp'
+              assert 'iPhoneOS' in info['CFBundleSupportedPlatforms']
+              assert root + 'embedded.mobileprovision' not in archive.namelist(), 'Expected unsigned package'
+              with archive.open(root + info['CFBundleExecutable']) as executable:
+                  header = executable.read(8)
+              assert header[:4] == b'\xcf\xfa\xed\xfe', 'Expected 64-bit Mach-O'
+              assert struct.unpack('<I', header[4:8])[0] == 0x0100000c, 'Expected iOS arm64 binary'
+          checksum = hashlib.sha256(ipa.read_bytes()).hexdigest()
+          ipa.with_suffix('.ipa.sha256').write_text(f'{checksum}  {ipa.name}\n')
+          with open(os.environ['GITHUB_STEP_SUMMARY'], 'a') as summary:
+              summary.write(f'## Test IPA\n\nVersion: {info["CFBundleShortVersionString"]} ({info["CFBundleVersion"]})\n\n')
+              summary.write('Unsigned arm64 IPA with local SAP libraries. Sign/install with your sideloading tool.\n\n')
+              summary.write(f'SHA-256: `{checksum}`\n')
+          PY
       - uses: actions/upload-artifact@v4
         with:
-          name: Asspp-4.3.11-local
-          path: ${{ runner.temp }}/Asspp-4.3.11-local.ipa
+          name: Asspp-features-unsigned-${{ github.run_number }}
+          if-no-files-found: error
+          retention-days: 14
+          path: |
+            ${{ runner.temp }}/Asspp-features-unsigned.ipa
+            ${{ runner.temp }}/Asspp-features-unsigned.ipa.sha256
+      - uses: actions/upload-artifact@v4
+        with:
+          name: LocalSAP-ios-arm64-${{ github.run_number }}
+          if-no-files-found: error
+          retention-days: 14
+          path: ${{ runner.temp }}/local-sap/

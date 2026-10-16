@@ -9,12 +9,19 @@ WORKSPACE="$SRCROOT/Asspp.xcworkspace"
 SCHEME="Asspp"
 BUILD_PRODUCT="Asspp.app"
 
-cd $SRCROOT
+cd "$SRCROOT"
+BUILD_DIR="${ASSPP_BUILD_DIR:-$SRCROOT/build}"
+DERIVED_DATA="${ASSPP_DERIVED_DATA_DIR:-$BUILD_DIR/DerivedDataApp}"
+mkdir -p "$BUILD_DIR" "$(dirname "$TARGET_IPA")"
+TARGET_IPA="$(cd "$(dirname "$TARGET_IPA")" && pwd)/$(basename "$TARGET_IPA")"
+PACKAGE_ARGS=()
+if [[ -n "${ASSPP_SOURCE_PACKAGES_DIR:-}" ]]; then
+    PACKAGE_ARGS=(-clonedSourcePackagesDirPath "$ASSPP_SOURCE_PACKAGES_DIR" -disableAutomaticPackageResolution)
+fi
 
-git clean -fdx -f
-git reset --hard
-
-# Generate Developer.xcconfig for CI (codesign completely disabled)
+# Create a CI config only if one does not exist. Command-line build settings
+# disable signing without replacing a developer's personal configuration.
+if [[ ! -f "$SRCROOT/Configuration/Developer.xcconfig" ]]; then
 cat >"$SRCROOT/Configuration/Developer.xcconfig" <<'EOF'
 // CI-generated Developer.xcconfig
 // Code signing is completely disabled for CI builds
@@ -25,11 +32,13 @@ CODE_SIGN_IDENTITY[sdk=macosx*] =
 CODE_SIGNING_REQUIRED = NO
 CODE_SIGNING_ALLOWED = NO
 EOF
+fi
 
 xcodebuild -workspace "$WORKSPACE" \
     -scheme "$SCHEME" \
     -configuration Release \
-    -derivedDataPath "$SRCROOT/build/DerivedDataApp" \
+    -derivedDataPath "$DERIVED_DATA" \
+    "${PACKAGE_ARGS[@]}" \
     -destination 'generic/platform=iOS' \
     build \
     LOCAL_SAP_LIBRARY_DIR="${LOCAL_SAP_LIBRARY_DIR:?Build the local SAP libraries first}" \
@@ -38,14 +47,8 @@ xcodebuild -workspace "$WORKSPACE" \
     COPY_PHASE_STRIP=NO UNSTRIPPED_PRODUCT=NO \
     | xcbeautify
 
-BUILD_PRODUCT_PATH=""
-for i in $(find "$SRCROOT/build/DerivedDataApp" -name "$BUILD_PRODUCT"); do
-    BUILD_PRODUCT_PATH=$i
-    break
-done
-BUILD_PRODUCT_PATH=$(realpath "$BUILD_PRODUCT_PATH")
-
-if [ -z "$BUILD_PRODUCT_PATH" ]; then
+BUILD_PRODUCT_PATH="$DERIVED_DATA/Build/Products/Release-iphoneos/$BUILD_PRODUCT"
+if [[ ! -d "$BUILD_PRODUCT_PATH" ]]; then
     echo "[-] build product not found"
     exit 1
 fi
@@ -53,11 +56,11 @@ fi
 echo "[+] build product path: $BUILD_PRODUCT_PATH"
 
 echo "[+] packaging..."
-pushd "$SRCROOT/build"
-mkdir -p Payload
-cp -r "$BUILD_PRODUCT_PATH" Payload
-zip -r "$TARGET_IPA" Payload
-rm -rf Payload
-popd
+PACKAGE_STAGE="$(mktemp -d "$BUILD_DIR/package.XXXXXX")"
+trap 'rm -rf "$PACKAGE_STAGE"' EXIT
+mkdir -p "$PACKAGE_STAGE/Payload"
+ditto "$BUILD_PRODUCT_PATH" "$PACKAGE_STAGE/Payload/$BUILD_PRODUCT"
+ditto -c -k --norsrc --keepParent "$PACKAGE_STAGE/Payload" "$PACKAGE_STAGE/Asspp.ipa"
+mv "$PACKAGE_STAGE/Asspp.ipa" "$TARGET_IPA"
 
 echo "[+] done"

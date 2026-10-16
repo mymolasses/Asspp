@@ -17,6 +17,7 @@ class Installer: ObservableObject, Identifiable, @unchecked Sendable {
     let id: UUID
     let app: Application
     let archive: AppStore.AppPackage
+    let bundleVersion: String
     let port = Int.random(in: 4000 ... 8000)
 
     enum Status {
@@ -30,10 +31,11 @@ class Installer: ObservableObject, Identifiable, @unchecked Sendable {
     @MainActor
     @Published var status: Status = .ready
 
-    init(archive: AppStore.AppPackage, path packagePath: URL) async throws {
+    init(archive: AppStore.AppPackage, path packagePath: URL, bundleVersion: String? = nil) async throws {
         let id: UUID = .init()
         self.id = id
         self.archive = archive
+        self.bundleVersion = bundleVersion ?? archive.software.version
         app = try await Self.setupApp(port: port, secured: true)
         logger.info("Installer app setup completed for ID: \(id)")
 
@@ -99,6 +101,7 @@ class Installer: ObservableObject, Identifiable, @unchecked Sendable {
 
         let id: UUID = .init()
         self.id = id
+        bundleVersion = ""
         archive = .init(software: .init(
             id: .random(),
             bundleID: "",

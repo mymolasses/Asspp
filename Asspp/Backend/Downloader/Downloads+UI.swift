@@ -32,7 +32,8 @@ extension Downloads {
     }
 
     func getAvailableActions(for request: PackageManifest) -> [DownloadAction] {
-        switch request.state.status {
+        if request.isLocal { return [.delete] }
+        return switch request.state.status {
         case .pending, .downloading:
             [.suspend, .delete]
         case .paused:
