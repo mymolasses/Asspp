@@ -13,6 +13,7 @@ import SwiftUI
 struct ProductView: View {
     @StateObject private var archive: AppPackageArchive
     @Binding var navigationPath: NavigationPath
+    @Environment(\.dismiss) private var dismiss
 
     var region: String {
         archive.region
@@ -61,6 +62,11 @@ struct ProductView: View {
             accountSelector
             buttons
             packageHeader
+            if let links = AppStoreLinks(appID: archive.package.software.id, region: region) {
+                Section {
+                    AppStoreLinkButtons(links: links, region: region)
+                }
+            }
             packageDetails
             packageDescription
             if account == nil {
@@ -87,7 +93,16 @@ struct ProductView: View {
                     .toolbar { Button("完成") { showAccountDetails = false } }
             }
         }
-        .navigationTitle("Select Account")
+        .navigationTitle(archive.package.software.name)
+        #if os(iOS)
+        .navigationBarTitleDisplayMode(.inline)
+        .navigationBarBackButtonHidden(true)
+        .toolbar {
+            ToolbarItem(placement: .topBarLeading) {
+                Button { dismiss() } label: { Label("Back", systemImage: "chevron.left") }
+            }
+        }
+        #endif
         .alert("购买请求结果", isPresented: $showPurchaseResult) {
             Button("确定", role: .cancel) {}
             if vm.sessionErrors[selection] != nil {

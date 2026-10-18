@@ -1,109 +1,35 @@
 name: Release
-
 on:
   push:
     tags:
       - "[0-9]*"
       - "v[0-9]*"
-
 permissions:
-  contents: write
-
+  contents: read
 concurrency:
   group: release-${{ github.ref }}
   cancel-in-progress: true
-
 jobs:
-  release:
-    runs-on: macos-26
-
+  validation:
+    uses: ./.github/workflows/validation.yml
+  build:
+    uses: ./.github/workflows/build-ios.yml
+  publish:
+    needs: [validation, build]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Select newest non-beta Xcode
-        run: |
-          set -euo pipefail
-          best_path=""
-          best_ver=""
-          for app in /Applications/Xcode*.app; do
-            [ -d "$app" ] || continue
-            info="$app/Contents/Info.plist"
-            [ -f "$info" ] || continue
-            # Skip beta/release-candidate installs.
-            case "$(printf '%s' "$app" | tr '[:upper:]' '[:lower:]')" in
-              *beta*|*_rc*) continue ;;
-            esac
-            ver="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$info" 2>/dev/null || true)"
-            [ -n "$ver" ] || continue
-            if [ -z "$best_ver" ] || [ "$(printf '%s\n%s\n' "$best_ver" "$ver" | sort -V | tail -1)" = "$ver" ]; then
-              best_ver="$ver"
-              best_path="$app"
-            fi
-          done
-          if [ -z "$best_path" ]; then
-            echo "::error::No non-beta Xcode found"
-            exit 1
-          fi
-          echo "Selected Xcode $best_ver at $best_path"
-          sudo xcode-select -s "$best_path"
-          xcodebuild -version
-
-      - name: Ensure iOS platform is installed
-        run: xcodebuild -downloadPlatform iOS || true
-
-      - name: Run authentication and history regression tests
-        run: swift test --package-path Vendor/ApplePackage --filter HistoricalDateTests
-
-      - name: Install Procursus
-        uses: dhinakg/procursus-action@main
+      - uses: actions/download-artifact@v4
         with:
-          packages: ldid findutils sed coreutils make
-
-      # Keep the iOS artifact outside the build checkout.
-      - uses: actions/setup-go@v5
-        with:
-          go-version: '1.25.7'
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '22'
-      - name: Prepare build tools
-        run: |
-          set -euo pipefail
-          python3 -m venv "$RUNNER_TEMP/asspp-build-tools"
-          "$RUNNER_TEMP/asspp-build-tools/bin/python" -m pip install --disable-pip-version-check 'cmake==3.31.6'
-          echo "$RUNNER_TEMP/asspp-build-tools/bin" >> "$GITHUB_PATH"
-          if ! command -v xcbeautify >/dev/null; then brew install xcbeautify; fi
-      - name: Test account backups and local IPA features
-        run: |
-          python3 Tests/Scripts/test_release_packaging.py
-          bash Resources/Scripts/test.features.sh
-      - name: Build and test local SAP bridge
-        run: bash Experiments/LocalSAP/build.sh "$RUNNER_TEMP/local-sap"
-
-      - name: Build iOS package
-        env:
-          LOCAL_SAP_LIBRARY_DIR: ${{ runner.temp }}/local-sap
-        run: |
-          chmod +x Resources/Scripts/compile.release.mobile.ci.sh
-          ./Resources/Scripts/compile.release.mobile.ci.sh "$(pwd)" "${RUNNER_TEMP}/Asspp.ipa"
-
-      - name: Create GitHub release
+          name: Asspp-ios-${{ github.sha }}
+          path: artifacts
+      - name: Publish release and IPA
         env:
           GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
         run: |
           set -euo pipefail
-          gh release view "${GITHUB_REF_NAME}" >/dev/null 2>&1 || \
-            gh release create "${GITHUB_REF_NAME}" \
-              --title "${GITHUB_REF_NAME}" \
-              --notes "Release ${GITHUB_REF_NAME}"
-
-      - name: Upload release artifacts
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          set -euo pipefail
-          gh release upload "${GITHUB_REF_NAME}" \
-            "${RUNNER_TEMP}/Asspp.ipa" \
-            --clobber
+          gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1 || \
+            gh release create "$GITHUB_REF_NAME" --title "$GITHUB_REF_NAME" --generate-notes
+          gh release upload "$GITHUB_REF_NAME" artifacts/Asspp.ipa artifacts/Asspp.ipa.sha256 --clobber

@@ -49,6 +49,15 @@ struct MainView: View {
             }
             // Expose the selection so menu commands (⌘F, ⌘,) can drive it.
             .focusedSceneValue(\.sidebarSelection, $selection)
+            .environment(\.openLibraryTab, { tab in
+                switch tab {
+                case .home: selection = .home
+                case .accounts: selection = .accounts
+                case .search: selection = .search
+                case .downloads: selection = .downloads
+                case .settings: selection = .settings
+                }
+            })
         }
 
         @ViewBuilder
@@ -177,39 +186,48 @@ struct MainView: View {
 #else
     private struct LegacyTabMainView: View {
         @ObservedObject var dvm = Downloads.this
+        @State private var selection: LibraryTab = .home
 
         var body: some View {
-            TabView {
+            TabView(selection: $selection) {
                 WelcomeView()
+                    .tag(LibraryTab.home)
                     .tabItem { Label("Home", systemImage: "house") }
                 AccountView()
+                    .tag(LibraryTab.accounts)
                     .tabItem { Label("Accounts", systemImage: "person") }
                 SearchView()
+                    .tag(LibraryTab.search)
                     .tabItem { Label("Search", systemImage: "magnifyingglass") }
                 DownloadView()
+                    .tag(LibraryTab.downloads)
                     .tabItem {
                         Label("Downloads", systemImage: "arrow.down.circle")
                     }
                     .badge(dvm.runningTaskCount) // putting badge inside will not work on iOS versions before 18
                 SettingView()
+                    .tag(LibraryTab.settings)
                     .tabItem { Label("Settings", systemImage: "gear") }
             }
+            .environment(\.openLibraryTab, { selection = $0 })
         }
     }
 
     @available(iOS 18.0, *)
     struct NewMainView: View {
         @ObservedObject var dvm = Downloads.this
+        @State private var selection: LibraryTab = .home
 
         var body: some View {
-            TabView {
-                Tab("Home", systemImage: "house") { WelcomeView() }
-                Tab("Accounts", systemImage: "person") { AccountView() }
-                Tab("Search", systemImage: "magnifyingglass") { SearchView() }
-                Tab("Downloads", systemImage: "arrow.down.circle") { DownloadView() }
+            TabView(selection: $selection) {
+                Tab("Home", systemImage: "house", value: LibraryTab.home) { WelcomeView() }
+                Tab("Accounts", systemImage: "person", value: LibraryTab.accounts) { AccountView() }
+                Tab("Search", systemImage: "magnifyingglass", value: LibraryTab.search) { SearchView() }
+                Tab("Downloads", systemImage: "arrow.down.circle", value: LibraryTab.downloads) { DownloadView() }
                     .badge(dvm.runningTaskCount)
-                Tab("Settings", systemImage: "gear") { SettingView() }
+                Tab("Settings", systemImage: "gear", value: LibraryTab.settings) { SettingView() }
             }
+            .environment(\.openLibraryTab, { selection = $0 })
             .neverMinimizeTab()
             .sidebarAdaptableTabView()
         }

@@ -103,81 +103,88 @@ struct SearchView: View {
     }
 
     var content: some View {
-        Form {
-            Section {
-                HStack(spacing: 10) {
-                    Image(systemName: "magnifyingglass").foregroundStyle(.secondary)
-                    TextField("Keyword", text: $searchKey)
-                        .textFieldStyle(.plain)
-                        .focused($searchKeyFocused)
-                        .autocorrectionDisabled()
-                        #if os(iOS)
-                        .textInputAutocapitalization(.never)
-                        #endif
-                        .submitLabel(.search)
-                        .onSubmit { search() }
-                    if !searchKey.isEmpty {
-                        Button {
-                            searchKey = ""
-                            searchKeyFocused = true
-                        } label: { Image(systemName: "xmark.circle.fill") }
-                        .buttonStyle(.borderless)
-                        .accessibilityLabel("Clear Search")
+        ScrollView {
+            VStack(alignment: .leading, spacing: 16) {
+                VStack(spacing: 14) {
+                    HStack(spacing: 10) {
+                        HStack(spacing: 8) {
+                            Image(systemName: "magnifyingglass").foregroundStyle(.secondary)
+                            TextField("Keyword", text: $searchKey)
+                                .textFieldStyle(.plain).focused($searchKeyFocused)
+                                .autocorrectionDisabled()
+                                #if os(iOS)
+                                .textInputAutocapitalization(.never)
+                                #endif
+                                .submitLabel(.search).onSubmit { search() }
+                            if !searchKey.isEmpty {
+                                Button { searchKey = ""; searchKeyFocused = true } label: {
+                                    Image(systemName: "xmark.circle.fill").foregroundStyle(.secondary)
+                                }
+                                .buttonStyle(.plain).accessibilityLabel("Clear Search")
+                            }
+                        }
+                        .padding(12)
+                        .background(Color.secondary.opacity(0.07), in: RoundedRectangle(cornerRadius: 12))
+                        Button(action: search) {
+                            Group {
+                                if searching { ProgressView().tint(.white) }
+                                else { Image(systemName: "arrow.right").font(.headline) }
+                            }
+                            .frame(width: 44, height: 44)
+                            .foregroundStyle(.white)
+                            .background(Color.blue, in: RoundedRectangle(cornerRadius: 12))
+                        }
+                        .buttonStyle(.plain).accessibilityLabel("Search Apps")
+                        .disabled(searching || searchKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                     }
+                    HStack {
+                        searchTypePicker.pickerStyle(.menu)
+                        Spacer(minLength: 8)
+                        searchRegionView()
+                    }
+                    .font(.subheadline).disabled(searching)
                 }
-                .padding(.vertical, 8)
-                HStack {
-                    searchTypePicker
-                    Spacer()
-                    searchRegionView()
+                .librarySurface()
+                if let searchError {
+                    Label(searchError, systemImage: "exclamationmark.circle")
+                        .font(.subheadline).foregroundStyle(.red).librarySurface()
                 }
-                .disabled(searching)
-                Button(action: search) {
-                    Label(searching ? "Searching..." : "Search Apps", systemImage: "magnifyingglass")
+                if !searching && searchResult.isEmpty && searchError == nil {
+                    VStack(spacing: 12) {
+                        Image(systemName: "magnifyingglass").font(.largeTitle).foregroundStyle(.blue.opacity(0.6))
+                        Text("Search by app name or bundle ID.").font(.subheadline).foregroundStyle(.secondary)
+                    }
+                    .frame(maxWidth: .infinity).padding(.vertical, 48)
                 }
-                .buttonStyle(.borderedProminent)
-                .disabled(searching || searchKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-            }
-            if !searching && searchResult.isEmpty && searchError == nil {
-                Section {
-                    Label("Search by app name or bundle ID.", systemImage: "sparkle.magnifyingglass")
-                        .foregroundStyle(.secondary).padding(.vertical, 24)
-                }
-            }
-            if let searchError {
-                Section {
-                    Text(searchError)
-                        .foregroundStyle(.red)
-                }
-            }
-            if searching || !searchResult.isEmpty {
-                Section(searching ? "Searching..." : "\(searchResult.count) Results") {
-                    LazyVGrid(columns: [GridItem(.adaptive(minimum: 280), spacing: 14)], spacing: 14) {
+                if !searchResult.isEmpty {
+                    LazyVStack(spacing: 0) {
                         ForEach(searchResult) { item in
                             NavigationLink(value: ProductDestination(archive: item, region: searchRegion)) {
-                                ArchivePreviewView(archive: item).librarySurface()
+                                HStack(spacing: 12) {
+                                    ArchivePreviewView(archive: item)
+                                    Image(systemName: "chevron.right").font(.caption.bold()).foregroundStyle(.blue)
+                                }
+                                .padding(16).frame(maxWidth: .infinity, alignment: .leading)
+                                .contentShape(Rectangle())
                             }
                             .buttonStyle(.plain)
+                            if item.id != searchResult.last?.id { Divider().padding(.leading, 16) }
                         }
                     }
-                    .listRowBackground(Color.clear)
-                    .transition(.opacity)
+                    .background(.background, in: RoundedRectangle(cornerRadius: 18))
+                    .overlay(RoundedRectangle(cornerRadius: 18).strokeBorder(Color.primary.opacity(0.06)))
                 }
-                .transition(.opacity)
             }
+            .frame(maxWidth: 1040).padding(16).frame(maxWidth: .infinity)
         }
-        .formStyle(.grouped)
-        .animation(.spring, value: searchError)
+        .background(Color.blue.opacity(0.035))
         .navigationDestination(for: ProductDestination.self) { dest in
             ProductView(archive: dest.archive, region: dest.region, navigationPath: $navigationPath)
         }
-        .navigationDestination(for: PackageManifest.self) { manifest in
-            PackageView(pkg: manifest)
-        }
+        .navigationDestination(for: PackageManifest.self) { PackageView(pkg: $0) }
         .navigationDestination(for: HistoryDestination.self) { destination in
             ProductHistoryView(accountID: destination.accountID, region: destination.region, package: destination.package)
         }
-        .animation(.spring, value: searchResult)
         .onAppear { consumePendingFocus() }
         .onChange(of: searchFocus.pending) { isPending in
             if isPending { consumePendingFocus() }
@@ -226,6 +233,7 @@ struct SearchView: View {
                     bundleID: term,
                     countryCode: region,
                 ) {
+                    result.removeAll { $0.bundleID == app.bundleID }
                     result.insert(app, at: 0)
                 }
                 logger.info("search completed: \(result.count) results for term=\(searchKey)")

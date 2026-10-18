@@ -1,0 +1,41 @@
+name: Regression checks
+on:
+  workflow_call:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  checks:
+    name: ${{ matrix.suite }}
+    runs-on: macos-26
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        suite: [authentication, features]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/prepare-xcode
+        id: xcode
+      - uses: actions/setup-node@v4
+        if: matrix.suite == 'features'
+        with:
+          node-version: '22'
+      - uses: actions/cache@v4
+        with:
+          path: |
+            Vendor/ApplePackage/.build
+            .build/feature-checks
+            ~/Library/Caches/org.swift.swiftpm
+            ~/.cache/org.swift.swiftpm
+          key: swift-checks-${{ runner.os }}-${{ steps.xcode.outputs.cache-key }}-${{ matrix.suite }}-${{ hashFiles('Asspp.xcworkspace/xcshareddata/swiftpm/Package.resolved', 'Vendor/ApplePackage/**', 'Tests/Features/**', 'Asspp/Backend/**', 'Resources/Scripts/test.features.sh') }}
+          restore-keys: |
+            swift-checks-${{ runner.os }}-${{ steps.xcode.outputs.cache-key }}-${{ matrix.suite }}-
+      - name: Authentication and history regression tests
+        if: matrix.suite == 'authentication'
+        run: swift test --package-path Vendor/ApplePackage --filter HistoricalDateTests
+      - name: Account backups, local IPA and packaging checks
+        if: matrix.suite == 'features'
+        run: |
+          python3 Tests/Scripts/test_release_packaging.py
+          bash Resources/Scripts/test.features.sh

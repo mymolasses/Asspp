@@ -4,26 +4,27 @@ struct WelcomeView: View {
     @ObservedObject private var accounts = AppStore.this
     @ObservedObject private var downloads = Downloads.this
     @State private var openInstruction = false
+    @Environment(\.openLibraryTab) private var openTab
 
     var body: some View {
         NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: 24) {
                     hero
-                    LazyVGrid(columns: [GridItem(.adaptive(minimum: 150), spacing: 14)], spacing: 14) {
+                    LazyVGrid(columns: Array(repeating: GridItem(.flexible(minimum: 0), spacing: 10), count: 3), spacing: 10) {
                         LibraryMetric(title: "Accounts", value: accounts.accounts.count, symbol: "person.2.fill")
                         LibraryMetric(title: "Downloading", value: downloads.runningTaskCount, symbol: "arrow.down.circle.fill", tint: .purple)
                         LibraryMetric(title: "Packages", value: downloads.manifests.filter { $0.completed }.count, symbol: "shippingbox.fill", tint: .green)
                     }
                     Text("Quick Actions").font(.title3.bold())
                     LazyVGrid(columns: [GridItem(.adaptive(minimum: 240), spacing: 14)], spacing: 14) {
-                        NavigationLink { AccountView() } label: {
+                        Button { openTab?(.accounts) } label: {
                             action("Accounts", subtitle: "Manage Apple IDs and encrypted backups.", symbol: "person.2", tint: .blue)
                         }
-                        NavigationLink { SearchView() } label: {
+                        Button { openTab?(.search) } label: {
                             action("Search", subtitle: "Find apps across App Store regions.", symbol: "magnifyingglass", tint: .purple)
                         }
-                        NavigationLink { DownloadView() } label: {
+                        Button { openTab?(.downloads) } label: {
                             action("Downloads", subtitle: "Manage downloads and local IPA files.", symbol: "shippingbox", tint: .green)
                         }
                     }
@@ -52,8 +53,8 @@ struct WelcomeView: View {
             Text("Welcome to Asspp").font(.largeTitle.bold())
             Text("Your apps, accounts and IPA library in one place.")
                 .foregroundStyle(.white.opacity(0.85))
-            NavigationLink {
-                if accounts.accounts.isEmpty { AccountView() } else { SearchView() }
+            Button {
+                openTab?(accounts.accounts.isEmpty ? .accounts : .search)
             } label: {
                 HStack {
                     Text(accounts.accounts.isEmpty ? String(localized: "Add Account") : String(localized: "Search Apps"))

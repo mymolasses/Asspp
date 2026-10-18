@@ -28,12 +28,12 @@ struct LibraryMetric: View {
     var tint: Color = .blue
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: 6) {
             Image(systemName: symbol).foregroundStyle(tint).font(.title3)
-            Text(value, format: .number).font(.largeTitle.bold()).monospacedDigit()
-            Text(title).font(.subheadline).foregroundStyle(.secondary)
+            Text(value, format: .number).font(.title2.bold()).monospacedDigit()
+            Text(title).font(.caption).foregroundStyle(.secondary).lineLimit(1).minimumScaleFactor(0.7)
         }
-        .frame(maxWidth: .infinity, alignment: .leading).padding(20)
+        .frame(maxWidth: .infinity, alignment: .leading).padding(12)
         .background(.background, in: RoundedRectangle(cornerRadius: 20))
         .overlay(RoundedRectangle(cornerRadius: 20).strokeBorder(Color.primary.opacity(0.06)))
         .accessibilityElement(children: .combine)
@@ -45,5 +45,20 @@ extension View {
         self.padding(16)
             .background(.background, in: RoundedRectangle(cornerRadius: 18))
             .overlay(RoundedRectangle(cornerRadius: 18).strokeBorder(Color.primary.opacity(0.06)))
+    }
+}
+
+enum LibraryTab: Hashable {
+    case home, accounts, search, downloads, settings
+}
+
+private struct OpenLibraryTabKey: EnvironmentKey {
+    static let defaultValue: ((LibraryTab) -> Void)? = nil
+}
+
+extension EnvironmentValues {
+    var openLibraryTab: ((LibraryTab) -> Void)? {
+        get { self[OpenLibraryTabKey.self] }
+        set { self[OpenLibraryTabKey.self] = newValue }
     }
 }

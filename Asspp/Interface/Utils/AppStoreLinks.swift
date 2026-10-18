@@ -29,14 +29,27 @@ struct AppStoreLinkButtons: View {
     let region: String
 
     var body: some View {
-        Link(destination: links.regionalStore) {
-            Label("Open Regional App Store", systemImage: "arrow.up.forward.app")
+        HStack(spacing: 10) {
+            Link(destination: links.regionalStore) {
+                tile("Regional Store", subtitle: AppStore.UserAccount.regionName(for: region), symbol: "arrow.up.forward.app", tint: .blue)
+            }
+            Link(destination: links.webPage) {
+                tile("Store Details", subtitle: "apps.apple.com", symbol: "safari", tint: .purple)
+            }
         }
-        LabeledContent("Region", value: AppStore.UserAccount.regionName(for: region))
-        Link(destination: links.webPage) {
-            Label("App Store Details", systemImage: "safari")
-        }
+        .buttonStyle(.plain)
     }
+
+    private func tile(_ title: LocalizedStringKey, subtitle: String, symbol: String, tint: Color) -> some View {
+        VStack(spacing: 5) {
+            Label(title, systemImage: symbol).font(.caption.weight(.semibold)).lineLimit(1).minimumScaleFactor(0.75)
+            Text(subtitle).font(.caption2).lineLimit(1)
+        }
+        .foregroundStyle(tint).frame(maxWidth: .infinity, minHeight: 58)
+        .background(tint.opacity(0.08), in: RoundedRectangle(cornerRadius: 12))
+        .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(tint.opacity(0.12)))
+    }
+
 }
 
 extension PackageManifest {
