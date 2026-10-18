@@ -130,6 +130,25 @@ struct SearchView: View {
 
     var content: some View {
         Form {
+            Section {
+                LibraryPageHeader(title: "Search", subtitle: "Find apps across App Store regions.", symbol: "magnifyingglass")
+                HStack {
+                    searchTypePicker
+                    Spacer()
+                    searchRegionView()
+                }
+                Button(action: search) {
+                    Label(searching ? "Searching..." : "Search Apps", systemImage: "magnifyingglass")
+                }
+                .buttonStyle(.borderedProminent)
+                .disabled(searching || searchKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            }
+            if !searching && searchResult.isEmpty && searchError == nil {
+                Section {
+                    Label("Search by app name or bundle ID.", systemImage: "sparkle.magnifyingglass")
+                        .foregroundStyle(.secondary).padding(.vertical, 24)
+                }
+            }
             if let searchError {
                 Section {
                     Text(searchError)
@@ -138,11 +157,15 @@ struct SearchView: View {
             }
             if searching || !searchResult.isEmpty {
                 Section(searching ? "Searching..." : "\(searchResult.count) Results") {
-                    ForEach(searchResult) { item in
-                        NavigationLink(value: ProductDestination(archive: item, region: searchRegion)) {
-                            ArchivePreviewView(archive: item)
+                    LazyVGrid(columns: [GridItem(.adaptive(minimum: 280), spacing: 14)], spacing: 14) {
+                        ForEach(searchResult) { item in
+                            NavigationLink(value: ProductDestination(archive: item, region: searchRegion)) {
+                                ArchivePreviewView(archive: item).librarySurface()
+                            }
+                            .buttonStyle(.plain)
                         }
                     }
+                    .listRowBackground(Color.clear)
                     .transition(.opacity)
                 }
                 .transition(.opacity)

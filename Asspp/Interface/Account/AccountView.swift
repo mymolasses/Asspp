@@ -1,11 +1,3 @@
-//
-//  AccountView.swift
-//  Asspp
-//
-//  Created by 秋星桥 on 2024/7/11.
-//
-
-import ApplePackage
 import SwiftUI
 
 struct AccountView: View {
@@ -13,206 +5,87 @@ struct AccountView: View {
     @State private var addAccount = false
     @State private var transferMode: AccountTransferView.Mode?
     @State private var query = ""
+    @State private var navigationPath = NavigationPath()
 
     private var filteredAccounts: [AppStore.UserAccount] {
         vm.accounts.filter { query.isEmpty || $0.id.localizedStandardContains(query) || $0.regionName.localizedStandardContains(query) }
     }
-    @State private var selectedID: AppStore.UserAccount.ID?
-    @State private var navigationPath = NavigationPath()
 
     var body: some View {
-        Group {
-            #if os(macOS)
-                macOSBody
-            #else
-                iOSBody
-            #endif
-        }
-        .sheet(item: $transferMode) { AccountTransferView(mode: $0) }
-    }
-
-    private var transferMenu: some View {
-        Menu {
-            Button { transferMode = .importBackup } label: { Label("Import Accounts", systemImage: "square.and.arrow.down") }
-            Button { transferMode = .exportBackup } label: { Label("Export Accounts", systemImage: "square.and.arrow.up") }
-                .disabled(vm.accounts.isEmpty)
-        } label: {
-            Label("Account Backup", systemImage: "arrow.up.arrow.down")
-        }
-    }
-
-    #if os(macOS)
-        private var macOSBody: some View {
-            NavigationStack(path: $navigationPath) {
-                accountsTable
-                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-                    .navigationTitle("Accounts")
-                    .toolbar { macToolbar }
-                    .searchable(text: $query, prompt: "Search Accounts")
-            }
-            .sheet(isPresented: $addAccount) {
-                AddAccountView()
-                    .frame(minWidth: 480, idealWidth: 520, minHeight: 340, idealHeight: 380)
-            }
-            .toolbarBackgroundVisibility(.hidden, for: .windowToolbar)
-        }
-
-        private var accountsTable: some View {
-            Table(filteredAccounts, selection: $selectedID) {
-                TableColumn("Email") { account in
-                    Text(account.account.email)
-                        .redacted(reason: .placeholder, isEnabled: vm.demoMode)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                }
-
-                TableColumn("Region") { account in
-                    Text(account.regionName)
-                }
-                .width(min: 40, ideal: 60, max: 80)
-
-                TableColumn("Storefront") { account in
-                    Text(account.account.store)
-                }
-                .width(min: 60, ideal: 80, max: 120)
-
-                TableColumn("Session") { account in
-                    AccountSessionLabel(accountID: account.id)
-                }
-                .width(min: 90, ideal: 120)
-
-                TableColumn("") { account in
-                    Button {
-                        navigationPath.append(account.id)
-                    } label: {
-                        Image(systemName: "info.circle")
+        NavigationStack(path: $navigationPath) {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 20) {
+                    LibraryPageHeader(title: "Accounts", subtitle: "Manage Apple IDs and encrypted backups.", symbol: "person.2.fill")
+                    HStack {
+                        Label("Apple IDs", systemImage: "lock.shield").font(.headline)
+                        Text(vm.accounts.count, format: .number).foregroundStyle(.secondary).monospacedDigit()
+                        Spacer()
+                        Button { addAccount = true } label: { Label("Add Account", systemImage: "plus") }
+                            .buttonStyle(.borderedProminent)
                     }
-                    .buttonStyle(.borderless)
-                }
-                .width(32)
-            }
-            .contextMenu(forSelectionType: AppStore.UserAccount.ID.self) { ids in
-                if let id = ids.first {
-                    Button("View Details") {
-                        navigationPath.append(id)
-                    }
-                }
-            }
-            .navigationDestination(for: AppStore.UserAccount.ID.self) { id in
-                AccountDetailView(accountId: id)
-            }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .overlay {
-                if !vm.accounts.isEmpty, filteredAccounts.isEmpty {
-                    Text("No Matching Accounts").foregroundStyle(.secondary)
-                } else if vm.accounts.isEmpty {
-                    UnavailableView(
-                        label: {
-                            Label("No Accounts", systemImage: "person.crop.circle.badge.questionmark")
-                        },
-                        description: {
-                            Text("Add an Apple ID to start downloading IPA packages.")
-                        },
-                        actions: {
-                            Button("Add Account") { addAccount.toggle() }
-                            Button("Import Accounts") { transferMode = .importBackup }
-                        },
-                    )
-                    .padding()
-                }
-            }
-        }
-
-        private var footer: some View {
-            HStack(spacing: 12) {
-                Image(systemName: "lock.shield")
-                    .font(.title3)
-                Text("Accounts are stored securely in your Keychain and can be removed at any time from the detail view.")
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
-            }
-        }
-
-        @ToolbarContentBuilder
-        private var macToolbar: some ToolbarContent {
-            ToolbarItem(placement: .primaryAction) { transferMenu }
-            ToolbarItem(placement: .primaryAction) {
-                Button {
-                    addAccount.toggle()
-                } label: {
-                    Label("Add Account", systemImage: "plus")
-                }
-            }
-        }
-    #endif
-
-    #if !os(macOS)
-        private var iOSBody: some View {
-            NavigationStack(path: $navigationPath) {
-                Group {
                     if vm.accounts.isEmpty {
-                        UnavailableView(
-                            label: {
-                                Label("No Accounts", systemImage: "person.crop.circle.badge.questionmark")
-                            },
-                            description: {
-                                Text("Add an Apple ID to start downloading IPA packages.")
-                            },
-                            actions: {
-                                Button("Add Account") { addAccount.toggle() }
-                                Button("Import Accounts") { transferMode = .importBackup }
-                            },
-                        )
+                        UnavailableView(label: { Label("No Accounts", systemImage: "person.crop.circle.badge.questionmark") },
+                            description: { Text("Add an Apple ID to start downloading IPA packages.") },
+                            actions: { Button("Import Accounts") { transferMode = .importBackup } })
+                            .frame(maxWidth: .infinity).padding(.vertical, 40)
+                    } else if filteredAccounts.isEmpty {
+                        Text("No Matching Accounts").foregroundStyle(.secondary).padding(.vertical, 40)
                     } else {
-                        Form {
-                            Section {
-                                if filteredAccounts.isEmpty { Text("No Matching Accounts").foregroundStyle(.secondary) }
-                                ForEach(filteredAccounts) { account in
-                                    NavigationLink(value: account.id) {
-                                        HStack {
-                                            VStack(alignment: .leading, spacing: 4) {
-                                                Text(account.account.email)
-                                                    .lineLimit(1).truncationMode(.middle)
-                                                    .redacted(reason: .placeholder, isEnabled: vm.demoMode)
-                                                AccountSessionLabel(accountID: account.id)
-                                                    .font(.caption)
-                                            }
-                                            Spacer()
-                                        }
-                                        .badge(account.regionName)
-                                    }
-                                }
-                            } header: {
-                                Text("Apple IDs")
-                            } footer: {
-                                Text("Your accounts are saved in your Keychain and will be synced across devices with the same iCloud account signed in.")
+                        LazyVGrid(columns: [GridItem(.adaptive(minimum: 280), spacing: 16)], spacing: 16) {
+                            ForEach(filteredAccounts) { account in
+                                NavigationLink(value: account.id) { accountCard(account) }.buttonStyle(.plain)
                             }
                         }
-                        .formStyle(.grouped)
                     }
+                    Label("Your accounts are saved in your Keychain and will be synced across devices with the same iCloud account signed in.", systemImage: "lock.shield")
+                        .font(.footnote).foregroundStyle(.secondary)
                 }
-                .navigationDestination(for: AppStore.UserAccount.ID.self) { id in
-                    AccountDetailView(accountId: id)
-                }
-                .navigationTitle("Accounts")
-                .searchable(text: $query, prompt: "Search Accounts")
-                .toolbar {
-                    ToolbarItem { transferMenu }
-                    ToolbarItem {
-                        Button {
-                            addAccount.toggle()
-                        } label: {
-                            Label("Add Account", systemImage: "plus")
-                        }
-                    }
-                }
+                .frame(maxWidth: 1040).padding(24).frame(maxWidth: .infinity, alignment: .top)
             }
-            .sheet(isPresented: $addAccount) {
-                NavigationStack {
-                    AddAccountView()
+            .background(Color.blue.opacity(0.035))
+            .navigationTitle("Accounts")
+            .searchable(text: $query, prompt: "Search Accounts")
+            .navigationDestination(for: AppStore.UserAccount.ID.self) { AccountDetailView(accountId: $0) }
+            .toolbar {
+                ToolbarItem {
+                    Menu {
+                        Button("Import Accounts", systemImage: "square.and.arrow.down") { transferMode = .importBackup }
+                        Button("Export Accounts", systemImage: "square.and.arrow.up") { transferMode = .exportBackup }
+                            .disabled(vm.accounts.isEmpty)
+                    } label: { Label("Account Backup", systemImage: "arrow.up.arrow.down") }
                 }
             }
         }
-    #endif
+        .sheet(item: $transferMode) { AccountTransferView(mode: $0) }
+        .sheet(isPresented: $addAccount) {
+            NavigationStack { AddAccountView() }
+                #if os(macOS)
+                .frame(minWidth: 480, minHeight: 380)
+                #endif
+        }
+    }
+
+    private func accountCard(_ account: AppStore.UserAccount) -> some View {
+        VStack(alignment: .leading, spacing: 18) {
+            HStack {
+                Image(systemName: "person.crop.circle.fill").font(.largeTitle).foregroundStyle(.blue)
+                Spacer()
+                Text(account.regionName).font(.caption.weight(.medium))
+                    .padding(.horizontal, 10).padding(.vertical, 5)
+                    .background(Color.blue.opacity(0.08), in: Capsule())
+            }
+            Text(account.id).font(.headline).lineLimit(1).truncationMode(.middle)
+                .redacted(reason: .placeholder, isEnabled: vm.demoMode)
+            AccountSessionLabel(accountID: account.id).font(.caption)
+            Divider()
+            HStack {
+                Text("View Details").font(.subheadline).foregroundStyle(.blue)
+                Spacer()
+                Image(systemName: "arrow.up.right").foregroundStyle(.blue)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading).librarySurface()
+    }
 }
 
 struct AccountSessionLabel: View {

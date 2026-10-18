@@ -12,7 +12,7 @@ struct DownloadView: View {
     @State private var accountID = "all"
     @State private var region = "all"
     @AppStorage("DownloadsSortOrder") private var sort = "newest"
-    @AppStorage("DownloadsViewMode") private var viewMode = "list"
+    @AppStorage("DownloadsViewMode") private var viewMode = "grid"
 
     private var hasFilters: Bool {
         !query.isEmpty || source != "all" || status != "all" || accountID != "all" || region != "all"
@@ -59,6 +59,13 @@ struct DownloadView: View {
                     .padding()
                 } else {
                     Form {
+                        Section {
+                            LibraryPageHeader(title: "Downloads", subtitle: "Manage downloads and local IPA files.", symbol: "shippingbox.fill")
+                            ViewThatFits(in: .horizontal) {
+                                HStack(spacing: 12) { packageMetrics }
+                                VStack(spacing: 12) { packageMetrics }
+                            }
+                        }
                         filters
                         Section {
                             if visiblePackages.isEmpty {
@@ -70,8 +77,7 @@ struct DownloadView: View {
                                     ForEach(visiblePackages) { manifest in
                                         PackageManifestRow(manifest: manifest)
                                             .buttonStyle(.plain)
-                                            .padding(12)
-                                            .background(Color.secondary.opacity(0.08), in: RoundedRectangle(cornerRadius: 12))
+                                            .librarySurface()
                                     }
                                 }
                                 .padding(.vertical, 8)
@@ -117,6 +123,13 @@ struct DownloadView: View {
                 showImport = false
             }
         }
+    }
+
+    @ViewBuilder
+    private var packageMetrics: some View {
+        LibraryMetric(title: "Packages", value: vm.manifests.count, symbol: "shippingbox", tint: .blue)
+        LibraryMetric(title: "Downloading", value: vm.runningTaskCount, symbol: "arrow.down.circle", tint: .purple)
+        LibraryMetric(title: "Local IPA", value: vm.manifests.filter { $0.isLocal }.count, symbol: "folder", tint: .green)
     }
 
     private var filters: some View {

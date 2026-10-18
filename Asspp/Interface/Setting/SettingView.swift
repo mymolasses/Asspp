@@ -41,8 +41,8 @@ struct SettingView: View {
     private var formContent: some View {
         Form {
             Section {
-                Text("本地 SAP 登录")
-                Text(version)
+                LibraryPageHeader(title: "Settings", subtitle: "Preferences, backups and device information.", symbol: "gearshape.fill")
+                LabeledContent("Asspp", value: version)
             }
             Section {
                 Toggle("Demo Mode", isOn: $vm.demoMode)

@@ -33,7 +33,9 @@ struct MainView: View {
                         .tag(section)
                 }
                 .listStyle(.sidebar)
-                .navigationSplitViewColumnWidth(min: 150, ideal: 150, max: 200)
+                .navigationTitle("Asspp")
+                .tint(.blue)
+                .navigationSplitViewColumnWidth(min: 200, ideal: 240, max: 280)
             } detail: {
                 Group {
                     if let selection {
@@ -203,15 +205,12 @@ struct MainView: View {
             TabView {
                 Tab("Home", systemImage: "house") { WelcomeView() }
                 Tab("Accounts", systemImage: "person") { AccountView() }
-                Tab(role: .search) {
-                    SearchView()
-                }
+                Tab("Search", systemImage: "magnifyingglass") { SearchView() }
                 Tab("Downloads", systemImage: "arrow.down.circle") { DownloadView() }
                     .badge(dvm.runningTaskCount)
                 Tab("Settings", systemImage: "gear") { SettingView() }
             }
             .neverMinimizeTab()
-            .activateSearchWhenSearchTabSelected()
             .sidebarAdaptableTabView()
         }
     }
