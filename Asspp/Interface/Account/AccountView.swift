@@ -15,7 +15,8 @@ struct AccountView: View {
         NavigationStack(path: $navigationPath) {
             ScrollView {
                 VStack(alignment: .leading, spacing: 20) {
-                    LibraryPageHeader(title: "Accounts", subtitle: "Manage Apple IDs and encrypted backups.", symbol: "person.2.fill")
+                    Text("Manage Apple IDs and encrypted backups.")
+                        .font(.subheadline).foregroundStyle(.secondary)
                     HStack {
                         Label("Apple IDs", systemImage: "lock.shield").font(.headline)
                         Text(vm.accounts.count, format: .number).foregroundStyle(.secondary).monospacedDigit()
@@ -44,10 +45,13 @@ struct AccountView: View {
             }
             .background(Color.blue.opacity(0.035))
             .navigationTitle("Accounts")
+            #if os(iOS)
+            .navigationBarTitleDisplayMode(.inline)
+            #endif
             .searchable(text: $query, prompt: "Search Accounts")
             .navigationDestination(for: AppStore.UserAccount.ID.self) { AccountDetailView(accountId: $0) }
             .toolbar {
-                ToolbarItem {
+                ToolbarItem(placement: .primaryAction) {
                     Menu {
                         Button("Import Accounts", systemImage: "square.and.arrow.down") { transferMode = .importBackup }
                         Button("Export Accounts", systemImage: "square.and.arrow.up") { transferMode = .exportBackup }

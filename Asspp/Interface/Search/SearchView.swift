@@ -40,25 +40,18 @@ struct SearchView: View {
 
     @State private var navigationPath = NavigationPath()
     @ObservedObject private var vm = AppStore.this
-    @Environment(\.horizontalSizeClass) var horizontalSizeClass
     var possibleRegion: Set<String> {
         vm.possibleRegions
     }
 
     var body: some View {
-        #if os(iOS)
-            NavigationStack(path: $navigationPath) {
-                if #available(iOS 26.0, *) {
-                    modernContent
-                } else {
-                    legacyContent
-                }
-            }
-        #else
-            NavigationStack(path: $navigationPath) {
-                legacyContent
-            }
-        #endif
+        NavigationStack(path: $navigationPath) {
+            content
+                .navigationTitle("Search")
+                #if os(iOS)
+                .navigationBarTitleDisplayMode(.inline)
+                #endif
+        }
     }
 
     var searchTypePicker: some View {
@@ -89,7 +82,7 @@ struct SearchView: View {
                 .pickerStyle(.inline)
 
                 buildPickView(
-                    for: regionKeys,
+                    for: regionKeys.filter { !possibleRegion.contains($0) },
                 ) {
                     Label("All Regions", systemImage: "globe")
                 }
@@ -109,34 +102,36 @@ struct SearchView: View {
         }
     }
 
-    @ToolbarContentBuilder
-    var tools: some ToolbarContent {
-        ToolbarItem(placement: .automatic) {
-            Menu {
-                searchTypePicker
-                    .labelsHidden()
-                    .pickerStyle(.inline)
-            } label: {
-                Label("Type", systemImage: searchType.iconName)
-            }
-            .menuIndicator(.hidden)
-        }
-
-        ToolbarItem(placement: .automatic) {
-            searchRegionView()
-                .menuIndicator(.hidden)
-        }
-    }
-
     var content: some View {
         Form {
             Section {
-                LibraryPageHeader(title: "Search", subtitle: "Find apps across App Store regions.", symbol: "magnifyingglass")
+                HStack(spacing: 10) {
+                    Image(systemName: "magnifyingglass").foregroundStyle(.secondary)
+                    TextField("Keyword", text: $searchKey)
+                        .textFieldStyle(.plain)
+                        .focused($searchKeyFocused)
+                        .autocorrectionDisabled()
+                        #if os(iOS)
+                        .textInputAutocapitalization(.never)
+                        #endif
+                        .submitLabel(.search)
+                        .onSubmit { search() }
+                    if !searchKey.isEmpty {
+                        Button {
+                            searchKey = ""
+                            searchKeyFocused = true
+                        } label: { Image(systemName: "xmark.circle.fill") }
+                        .buttonStyle(.borderless)
+                        .accessibilityLabel("Clear Search")
+                    }
+                }
+                .padding(.vertical, 8)
                 HStack {
                     searchTypePicker
                     Spacer()
                     searchRegionView()
                 }
+                .disabled(searching)
                 Button(action: search) {
                     Label(searching ? "Searching..." : "Search Apps", systemImage: "magnifyingglass")
                 }
@@ -211,6 +206,10 @@ struct SearchView: View {
     }
 
     func search() {
+        let term = searchKey.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !term.isEmpty, !searching else { return }
+        let region = searchRegion
+        let entity = searchType
         searchKeyFocused = false
         searching = true
         searchError = nil
@@ -218,14 +217,14 @@ struct SearchView: View {
         Task {
             do {
                 var result = try await ApplePackage.Searcher.search(
-                    term: searchKey,
-                    countryCode: searchRegion,
+                    term: term,
+                    countryCode: region,
                     limit: 32,
-                    entityType: searchType,
+                    entityType: entity,
                 )
                 if let app = try? await ApplePackage.Lookup.lookup(
-                    bundleID: searchKey,
-                    countryCode: searchRegion,
+                    bundleID: term,
+                    countryCode: region,
                 ) {
                     result.insert(app, at: 0)
                 }
@@ -268,77 +267,6 @@ struct HistoryDestination: Hashable {
     static func == (lhs: Self, rhs: Self) -> Bool { lhs.id == rhs.id }
     func hash(into hasher: inout Hasher) { hasher.combine(id) }
 }
-
-extension SearchView {
-    var legacyContent: some View {
-        content
-            .searchable(text: $searchKey, prompt: "Keyword") {}
-            #if os(macOS)
-                .searchFocused($searchKeyFocused)
-            #endif
-            .onSubmit(of: .search) { search() }
-            .navigationTitle("搜索 - \(AppStore.UserAccount.regionName(for: searchRegion))")
-            .toolbar { tools }
-    }
-}
-
-// MARK: - Liquid Glass
-
-#if os(iOS)
-    @available(iOS 26.0, *)
-    extension SearchView {
-        var modernContent: some View {
-            content
-                .searchable(text: $searchKey, placement: searchablePlacement, prompt: "Keyword")
-                .onSubmit(of: .search) { search() }
-                .toolbarVisibility(navigationBarVisibility, for: .navigationBar)
-                .navigationTitle(Text("搜索 - \(AppStore.UserAccount.regionName(for: searchRegion))"))
-                .toolbar {
-                    if navigationBarVisibility != .hidden {
-                        tools
-                    }
-                }
-                .safeAreaBar(edge: .top) {
-                    if navigationBarVisibility == .hidden {
-                        HStack {
-                            Menu {
-                                searchTypePicker
-                            } label: {
-                                Label(searchType.rawValue, systemImage: searchType.iconName)
-                            }
-                            .buttonStyle(.glass)
-
-                            Spacer()
-
-                            searchRegionView()
-                                .buttonStyle(.glass)
-                        }
-                        .padding([.bottom, .horizontal])
-                    }
-                }
-                .animation(.spring, value: searchResult)
-                .animation(.spring, value: searching)
-        }
-
-        var navigationBarVisibility: Visibility {
-            switch horizontalSizeClass {
-            case .compact:
-                .hidden
-            default:
-                .automatic
-            }
-        }
-
-        var searchablePlacement: SearchFieldPlacement {
-            switch horizontalSizeClass {
-            case .compact:
-                .automatic
-            default:
-                .toolbar
-            }
-        }
-    }
-#endif
 
 #if DEBUG
     private typealias AppPackages = [AppStore.AppPackage]

@@ -69,6 +69,12 @@ struct PackageView: View {
                 Text("Details")
             }
 
+            if let links = pkg.appStoreLinks, let account = pkg.account {
+                Section("App Store") {
+                    AppStoreLinkButtons(links: links, region: account.regionCode)
+                }
+            }
+
             if let info = pkg.localIPA {
                 Section {
                     TextField("Display Name (Optional)", text: $displayName)

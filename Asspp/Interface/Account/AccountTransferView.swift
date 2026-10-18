@@ -110,7 +110,9 @@ struct AccountTransferView: View {
         .frame(minWidth: 480, minHeight: 420)
         #endif
         .interactiveDismissDisabled(busy)
-        .fileImporter(isPresented: $showImporter, allowedContentTypes: [.data], allowsMultipleSelection: false) { result in
+        // Unknown .enc extensions are not consistently classified as public.data.
+        // Validate the bounded encrypted payload after selection instead.
+        .fileImporter(isPresented: $showImporter, allowedContentTypes: [.item], allowsMultipleSelection: false) { result in
             switch result {
             case let .success(urls):
                 fileURL = urls.first
