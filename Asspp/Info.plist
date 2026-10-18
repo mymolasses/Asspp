@@ -2,6 +2,35 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+    <key>UTImportedTypeDeclarations</key>
+    <array>
+        <dict>
+            <key>UTTypeIdentifier</key>
+            <string>wiki.qaq.asspp.encrypted-backup</string>
+            <key>UTTypeDescription</key>
+            <string>Asspp Encrypted Account Backup</string>
+            <key>UTTypeConformsTo</key>
+            <array><string>public.data</string></array>
+            <key>UTTypeTagSpecification</key>
+            <dict>
+                <key>public.filename-extension</key>
+                <array><string>enc</string></array>
+            </dict>
+        </dict>
+        <dict>
+            <key>UTTypeIdentifier</key>
+            <string>wiki.qaq.asspp.ipa</string>
+            <key>UTTypeDescription</key>
+            <string>iOS App Archive</string>
+            <key>UTTypeConformsTo</key>
+            <array><string>public.zip-archive</string></array>
+            <key>UTTypeTagSpecification</key>
+            <dict>
+                <key>public.filename-extension</key>
+                <array><string>ipa</string></array>
+            </dict>
+        </dict>
+    </array>
 	<!-- Optional SAP authentication bridge. Leave empty to use native auth. -->
 	<key>ASSPP_WEB_BASE_URL</key>
 	<string>$(ASSPP_WEB_BASE_URL)</string>

@@ -55,9 +55,9 @@ struct ImportIPAView: View {
         .frame(minWidth: 480, minHeight: 380)
         #endif
         .interactiveDismissDisabled(importing)
-        .fileImporter(isPresented: $showPicker, allowedContentTypes: [.data], allowsMultipleSelection: false) { result in
+        .importDocument(isPresented: $showPicker, types: ImportDocumentTypes.packages) { result in
             do {
-                guard let url = try result.get().first else { return }
+                let url = try result.get()
                 guard url.pathExtension.lowercased() == "ipa" else { throw LocalIPAReader.Failure.invalidIPA }
                 file = url
                 error = ""

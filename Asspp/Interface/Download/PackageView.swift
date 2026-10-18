@@ -30,7 +30,7 @@ struct PackageView: View {
         @State private var installer: Installer?
     #endif
     #if os(macOS)
-        @State private var copied = false
+        @State private var showDeviceInstall = false
     #endif
 
     @State private var error = ""
@@ -44,26 +44,28 @@ struct PackageView: View {
     var body: some View {
         Form {
             Section {
-                ArchivePreviewView(archive: archive)
+                ArchivePreviewView(archive: archive, preferredIconSize: 64, lineLimit: nil)
             } header: {
                 Text("Package")
             }
 
             Section {
+                packageActions
+            }
+            #if os(macOS)
+            if showDeviceInstall && pkg.completed { DeviceCTLInstallSection(package: pkg) }
+            #endif
+
+            Section {
                 CopyableRow(label: "Bundle ID", value: archive.software.bundleID, monospaced: true)
-                Text("Version")
-                    .badge(archive.software.version)
-                Text("Developer")
-                    .badge(archive.software.sellerName)
+                DetailValueRow(title: "Version", value: archive.software.version)
+                DetailValueRow(title: "Developer", value: archive.software.sellerName)
                 if !archive.software.primaryGenreName.isEmpty {
-                    Text("Category")
-                        .badge(archive.software.primaryGenreName)
+                    DetailValueRow(title: "Category", value: archive.software.primaryGenreName)
                 }
-                Text("Compatibility")
-                    .badge("\(archive.software.minimumOsVersion)+")
+                DetailValueRow(title: "Compatibility", value: "\(archive.software.minimumOsVersion)+")
                 if archive.software.userRatingCount > 0 {
-                    Text("Rating")
-                        .badge("\(String(format: "%.1f", archive.software.averageUserRating)) (\(archive.software.userRatingCount))")
+                    DetailValueRow(title: "Rating", value: "\(String(format: "%.1f", archive.software.averageUserRating)) (\(archive.software.userRatingCount))")
                 }
             } header: {
                 Text("Details")
@@ -104,95 +106,7 @@ struct PackageView: View {
                 IPASigningSection(info: info)
             }
 
-            if pkg.completed {
-                #if os(macOS)
-                    DeviceCTLInstallSection(package: pkg)
-                #endif
-                #if os(iOS)
-                    Section {
-                        AsyncButton {
-                            do {
-                                installer = try await Installer(archive: archive, path: url, bundleVersion: pkg.installationBundleVersion)
-                            } catch {
-                                self.error = error.localizedDescription
-                                throw error
-                            }
-                        } label: {
-                            Text("Install")
-                        }
-                        .disabledWhenLoading()
-                        .sheet(item: $installer) {
-                            installer?.destroy()
-                            installer = nil
-                        } content: {
-                            InstallerView(installer: $0)
-                        }
-
-                        Button("Install via AirDrop") {
-                            let newUrl = temporaryDirectory
-                                .appendingPathComponent(pkg.id.uuidString)
-                                .appendingPathExtension("ipa")
-                            do {
-                                if FileManager.default.fileExists(atPath: newUrl.path) {
-                                    try FileManager.default.removeItem(at: newUrl)
-                                }
-                                try FileManager.default.copyItem(at: url, to: newUrl)
-                                AirDrop(items: [newUrl])
-                            } catch { self.error = error.localizedDescription }
-                        }
-                    } header: {
-                        Text("Control")
-                    } footer: {
-                        if error.isEmpty {
-                            Text("Direct install may have limitations that cannot be bypassed. Use AirDrop if possible on another device.")
-                        } else {
-                            Text(error)
-                                .foregroundStyle(.red)
-                        }
-                    }
-                #endif
-
-                Section {
-                    ShareLink(item: url) { Label("Share IPA", systemImage: "square.and.arrow.up") }
-                    NavigationLink("Content Viewer") {
-                        FileListView(packageURL: pkg.targetLocation)
-                    }
-                    #if os(macOS)
-                        HStack {
-                            Button {
-                                NSWorkspace.shared.activateFileViewerSelecting([url])
-                            } label: {
-                                Text(url.path)
-                                    .multilineTextAlignment(.leading)
-                            }
-                            .help("Show in Finder")
-                            .buttonStyle(.borderless)
-                            .tint(.accentColor)
-                            Spacer()
-                            Button {
-                                let pasteboard = NSPasteboard.general
-                                pasteboard.clearContents()
-                                pasteboard.setString(url.path, forType: .string)
-                                copied = true
-                                Task { @MainActor in
-                                    try? await Task.sleep(for: .seconds(1))
-                                    copied = false
-                                }
-                            } label: {
-                                Image(systemName: copied ? "checkmark" : "document.on.document")
-                                    .contentTransition(.symbolEffect(.replace))
-                            }
-                            .help("Copy File Path")
-                            .buttonStyle(.borderless)
-                            .tint(.accentColor)
-                        }
-                    #endif
-                } header: {
-                    Text("Analysis")
-                } footer: {
-                    Text("Developer options.")
-                }
-            } else {
+            if !pkg.completed {
                 Section {
                     let actions = downloads.getAvailableActions(for: pkg)
                     ForEach(actions.filter { $0 != .delete }, id: \.self) { action in
@@ -253,27 +167,75 @@ struct PackageView: View {
                 Section { Text(error).foregroundStyle(.red).textSelection(.enabled) }
             }
 
-            Section {
-                let deleteAction = DownloadAction.delete
-                let label = downloads.getActionLabel(for: deleteAction)
-                Button(label.title) {
-                    confirmDelete = true
-                }
-                .foregroundStyle(label.isDestructive ? .red : .primary)
-            } header: {
-                Text("Danger Zone")
-            } footer: {
-                Text(url.path)
-            }
         }
         .formStyle(.grouped)
         .navigationTitle(pkg.displayPackage.software.name)
         .onAppear { displayName = pkg.displayName }
+        #if os(iOS)
+        .sheet(item: $installer, onDismiss: {
+            installer?.destroy()
+            installer = nil
+        }) { InstallerView(installer: $0) }
+        #endif
         .confirmationDialog("Delete this package and its file?", isPresented: $confirmDelete, titleVisibility: .visible) {
             Button("Delete", role: .destructive) {
                 downloads.delete(request: pkg)
                 dismiss()
             }
         }
+    }
+
+    private var packageActions: some View {
+        HStack(spacing: 6) {
+            #if os(iOS)
+            AsyncButton {
+                error = ""
+                do {
+                    installer = try await Installer(archive: archive, path: url, bundleVersion: pkg.installationBundleVersion)
+                } catch {
+                    self.error = error.localizedDescription
+                    throw error
+                }
+            } label: { actionLabel("Install", symbol: "arrow.down.app", tint: .blue) }
+            .disabledWhenLoading().disabled(!pkg.completed)
+            #else
+            Button { showDeviceInstall.toggle() } label: {
+                actionLabel("Install", symbol: "arrow.down.app", tint: .blue)
+            }
+            .disabled(!pkg.completed)
+            #endif
+            ShareLink(item: url) {
+                actionLabel("Share", symbol: "square.and.arrow.up", tint: .blue)
+            }
+            .disabled(!pkg.completed)
+            NavigationLink { FileListView(packageURL: pkg.targetLocation) } label: {
+                actionLabel("View Files", symbol: "folder", tint: .blue)
+            }
+            .disabled(!pkg.completed)
+            #if os(macOS)
+            .contextMenu {
+                Button("Show in Finder") { NSWorkspace.shared.activateFileViewerSelecting([url]) }
+                Button("Copy File Path") {
+                    NSPasteboard.general.clearContents()
+                    NSPasteboard.general.setString(url.path, forType: .string)
+                }
+            }
+            #endif
+            Button { confirmDelete = true } label: {
+                actionLabel("Delete", symbol: "trash", tint: .red)
+            }
+        }
+        .buttonStyle(.plain)
+        .padding(.vertical, 2)
+    }
+
+    private func actionLabel(_ title: LocalizedStringKey, symbol: String, tint: Color) -> some View {
+        VStack(spacing: 6) {
+            Image(systemName: symbol).font(.body.weight(.medium))
+            Text(title).font(.caption2.weight(.medium)).lineLimit(1).minimumScaleFactor(0.8)
+        }
+        .foregroundStyle(tint).frame(maxWidth: .infinity, minHeight: 58)
+        .background(tint.opacity(0.06), in: RoundedRectangle(cornerRadius: 10))
+        .contentShape(RoundedRectangle(cornerRadius: 10))
     }
 }

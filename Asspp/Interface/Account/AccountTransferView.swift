@@ -110,19 +110,17 @@ struct AccountTransferView: View {
         .frame(minWidth: 480, minHeight: 420)
         #endif
         .interactiveDismissDisabled(busy)
-        // Unknown .enc extensions are not consistently classified as public.data.
-        // Validate the bounded encrypted payload after selection instead.
-        .fileImporter(isPresented: $showImporter, allowedContentTypes: [.item], allowsMultipleSelection: false) { result in
+        .importDocument(isPresented: $showImporter, types: ImportDocumentTypes.backups) { result in
             switch result {
-            case let .success(urls):
-                fileURL = urls.first
+            case let .success(url):
+                fileURL = url
                 imported = []
                 error = ""
                 message = ""
             case let .failure(failure): error = failure.localizedDescription
             }
         }
-        .fileExporter(isPresented: $showExporter, document: document, contentType: .data,
+        .fileExporter(isPresented: $showExporter, document: document, contentType: ImportDocumentTypes.accountBackup,
                       defaultFilename: "asspp-accounts.backup.enc") { result in
             document = nil
             switch result {
@@ -172,7 +170,7 @@ struct AccountTransferView: View {
 }
 
 private struct AccountBackupDocument: FileDocument {
-    static var readableContentTypes: [UTType] { [.data] }
+    static var readableContentTypes: [UTType] { [ImportDocumentTypes.accountBackup, .data] }
     let data: Data
     init(data: Data) { self.data = data }
     init(configuration: ReadConfiguration) throws {

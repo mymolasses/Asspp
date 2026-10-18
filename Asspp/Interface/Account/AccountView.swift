@@ -70,26 +70,32 @@ struct AccountView: View {
     }
 
     private func accountCard(_ account: AppStore.UserAccount) -> some View {
-        VStack(alignment: .leading, spacing: 18) {
-            HStack {
-                Image(systemName: "person.crop.circle.fill").font(.largeTitle).foregroundStyle(.blue)
-                Spacer()
-                Text(account.regionName).font(.caption.weight(.medium))
-                    .padding(.horizontal, 10).padding(.vertical, 5)
-                    .background(Color.blue.opacity(0.08), in: Capsule())
+        HStack(spacing: 10) {
+            Image(systemName: "person.fill")
+                .font(.subheadline).foregroundStyle(.blue)
+                .frame(width: 34, height: 34)
+                .background(Color.blue.opacity(0.08), in: RoundedRectangle(cornerRadius: 10))
+            VStack(alignment: .leading, spacing: 5) {
+                Text(account.id).font(.subheadline.weight(.semibold)).lineLimit(1).truncationMode(.middle)
+                    .redacted(reason: .placeholder, isEnabled: vm.demoMode)
+                HStack(spacing: 8) {
+                    AccountSessionLabel(accountID: account.id)
+                    Text("·").foregroundStyle(.tertiary)
+                    Text(account.regionName).foregroundStyle(.secondary).lineLimit(1)
+                }
+                .font(.caption)
             }
-            Text(account.id).font(.headline).lineLimit(1).truncationMode(.middle)
-                .redacted(reason: .placeholder, isEnabled: vm.demoMode)
-            AccountSessionLabel(accountID: account.id).font(.caption)
-            Divider()
-            HStack {
-                Text("View Details").font(.subheadline).foregroundStyle(.blue)
-                Spacer()
-                Image(systemName: "arrow.up.right").foregroundStyle(.blue)
-            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            Image(systemName: "chevron.right").font(.caption2.weight(.semibold)).foregroundStyle(.tertiary)
         }
-        .frame(maxWidth: .infinity, alignment: .leading).librarySurface()
+        .padding(12)
+        .background(.background, in: RoundedRectangle(cornerRadius: 12))
+        .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(Color.primary.opacity(0.06)))
+        .contentShape(Rectangle())
+        .accessibilityElement(children: .combine)
+        .accessibilityHint("View Details")
     }
+
 }
 
 struct AccountSessionLabel: View {

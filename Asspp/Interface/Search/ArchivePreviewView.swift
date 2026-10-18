@@ -25,7 +25,7 @@ struct ArchivePreviewView: View {
     }
 
     var body: some View {
-        HStack(spacing: 8) {
+        HStack(alignment: .top, spacing: 12) {
             KFImage(URL(string: archive.software.artworkUrl))
                 .placeholder {
                     Image(systemName: "shippingbox.fill")
@@ -42,19 +42,20 @@ struct ArchivePreviewView: View {
                 .clipShape(.rect(cornerRadius: 0.2184466 * iconSize))
                 .frame(width: iconSize, height: iconSize, alignment: .center)
                 .shadow(radius: 1)
-            VStack(alignment: .leading, spacing: 2) {
-                HStack(alignment: .firstTextBaseline) {
-                    Text(archive.software.name)
-                        .bold()
-                        .lineLimit(2)
-                    Spacer()
-                    Text(archive.software.version)
-                        .foregroundStyle(.secondary)
+            VStack(alignment: .leading, spacing: 5) {
+                Text(archive.software.name)
+                    .font(preferredIconSize == nil ? .headline : .title3.weight(.semibold))
+                    .lineLimit(lineLimit).fixedSize(horizontal: false, vertical: true)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                if !archive.software.sellerName.isEmpty {
+                    Text(archive.software.sellerName).font(.subheadline)
+                        .foregroundStyle(.secondary).lineLimit(lineLimit)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
-                Text(archive.software.sellerName)
-                    .lineLimit(1)
-                    .foregroundStyle(.secondary)
+                Text(archive.software.version).font(.caption).foregroundStyle(.secondary)
+                    .lineLimit(1).truncationMode(.middle)
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
     }

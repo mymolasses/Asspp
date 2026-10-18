@@ -19,44 +19,19 @@ struct PackageDisplayView: View {
     }
 
     var body: some View {
-        _body
-            .overlay(alignment: .bottomTrailing) {
-                if style != .detail {
-                    Button {
-                        style = .detail
-                    } label: {
-                        Text("More")
-                            .foregroundStyle(.secondary)
-                            .padding(.leading, 10)
-                    }
-                    .buttonStyle(.borderless)
-                    .background(Rectangle().fill(LinearGradient(
-                        gradient: Gradient(colors: [.clear, .white]),
-                        startPoint: .init(x: 0, y: 0.5),
-                        endPoint: .init(x: 0.2, y: 0.5),
-                    )).blendMode(.destinationOut))
-                    .transition(.scale)
-                }
-            }
-            .compositingGroup()
-            .padding(.vertical, 4)
-    }
-
-    var _body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            ArchivePreviewView(archive: archive, preferredIconSize: 70, lineLimit: nil)
+        VStack(alignment: .leading, spacing: 12) {
+            ArchivePreviewView(archive: archive, preferredIconSize: 64, lineLimit: nil)
             if !archive.software.description.isEmpty {
-                Group {
-                    switch style {
-                    case .compact:
-                        Text(archive.software.description)
-                            .lineLimit(3)
-                    case .detail:
-                        Text(archive.software.description)
-                    }
+                Text(archive.software.description)
+                    .font(.subheadline).foregroundStyle(.secondary)
+                    .lineLimit(style == .compact ? 3 : nil)
+                    .fixedSize(horizontal: false, vertical: true)
+                Button(style == .compact ? String(localized: "More") : String(localized: "Less")) {
+                    style = style == .compact ? .detail : .compact
                 }
-                .foregroundStyle(.secondary)
+                .font(.caption.weight(.semibold)).buttonStyle(.borderless)
             }
         }
+        .padding(.vertical, 4)
     }
 }

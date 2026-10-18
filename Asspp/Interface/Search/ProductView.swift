@@ -175,21 +175,16 @@ struct ProductView: View {
     var packageDetails: some View {
         Section {
             CopyableRow(label: "Bundle ID", value: archive.package.software.bundleID, monospaced: true)
-            Text("Developer")
-                .badge(archive.package.software.sellerName)
+            DetailValueRow(title: "Developer", value: archive.package.software.sellerName)
             if !archive.package.software.primaryGenreName.isEmpty {
-                Text("Category")
-                    .badge(archive.package.software.primaryGenreName)
+                DetailValueRow(title: "Category", value: archive.package.software.primaryGenreName)
             }
             if let formattedSize {
-                Text("Size")
-                    .badge(formattedSize)
+                DetailValueRow(title: "Size", value: formattedSize)
             }
-            Text("Compatibility")
-                .badge("\(archive.package.software.minimumOsVersion)+")
+            DetailValueRow(title: "Compatibility", value: "\(archive.package.software.minimumOsVersion)+")
             if archive.package.software.userRatingCount > 0 {
-                Text("Rating")
-                    .badge("\(String(format: "%.1f", archive.package.software.averageUserRating)) (\(archive.package.software.userRatingCount))")
+                DetailValueRow(title: "Rating", value: "\(String(format: "%.1f", archive.package.software.averageUserRating)) (\(archive.package.software.userRatingCount))")
             }
         } header: {
             Text("Details")

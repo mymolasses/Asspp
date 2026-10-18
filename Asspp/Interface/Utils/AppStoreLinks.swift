@@ -41,11 +41,18 @@ struct AppStoreLinkButtons: View {
     }
 
     private func tile(_ title: LocalizedStringKey, subtitle: String, symbol: String, tint: Color) -> some View {
-        VStack(spacing: 5) {
-            Label(title, systemImage: symbol).font(.caption.weight(.semibold)).lineLimit(1).minimumScaleFactor(0.75)
-            Text(subtitle).font(.caption2).lineLimit(1)
+        HStack(spacing: 9) {
+            Image(systemName: symbol).font(.title3.weight(.medium))
+                .frame(width: 28, height: 32)
+                .accessibilityHidden(true)
+            VStack(alignment: .leading, spacing: 4) {
+                Text(title).font(.caption.weight(.semibold)).lineLimit(1).minimumScaleFactor(0.8)
+                Text(subtitle).font(.caption2).lineLimit(1).truncationMode(.tail)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .foregroundStyle(tint).frame(maxWidth: .infinity, minHeight: 58)
+        .foregroundStyle(tint).padding(.horizontal, 10).padding(.vertical, 12)
+        .frame(maxWidth: .infinity, minHeight: 62, alignment: .leading)
         .background(tint.opacity(0.08), in: RoundedRectangle(cornerRadius: 12))
         .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(tint.opacity(0.12)))
     }
