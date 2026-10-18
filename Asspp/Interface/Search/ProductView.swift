@@ -59,14 +59,9 @@ struct ProductView: View {
 
     var body: some View {
         Form {
+            packageHeader
             accountSelector
             buttons
-            packageHeader
-            if let links = AppStoreLinks(appID: archive.package.software.id, region: region) {
-                Section {
-                    AppStoreLinkButtons(links: links, region: region)
-                }
-            }
             packageDetails
             packageDescription
             if account == nil {
@@ -202,17 +197,6 @@ struct ProductView: View {
     var pricing: some View {
         Section {
             Text("\(archive.formattedPrice ?? "N/A")")
-            if archive.price == 0 {
-                Button {
-                    Task { await requestLicense() }
-                } label: {
-                    HStack {
-                        if isAcquiringLicense { ProgressView() }
-                        Text(isAcquiringLicense ? "正在请求购买…" : "请求购买 / 获取许可证")
-                    }
-                }
-                .disabled(account == nil || isAcquiringLicense)
-            }
         } header: {
             Text("Pricing")
         } footer: {
@@ -255,8 +239,6 @@ struct ProductView: View {
                 Text("已载入保存的登录信息，尚未验证；请求时若已失效，将自动刷新一次。")
                     .font(.caption).foregroundStyle(.secondary)
             }
-            Button("账号详情 / 刷新令牌 / 验证码") { showAccountDetails = true }
-                .disabled(account == nil)
         } header: {
             Text("Account")
         } footer: {
@@ -266,44 +248,72 @@ struct ProductView: View {
 
     var buttons: some View {
         Section {
-            if let req = dvm.downloadRequest(forArchive: archive.package) {
-                NavigationLink(value: req) {
-                    Text("Show Download")
+            LazyVGrid(columns: [GridItem(.flexible(minimum: 0)), GridItem(.flexible(minimum: 0))], spacing: 10) {
+                if let req = dvm.downloadRequest(forArchive: archive.package) {
+                    Button { navigationPath.append(req) } label: {
+                        LibraryActionLabel(title: "Show Download", symbol: "arrow.down.circle")
+                    }
+                } else {
+                    AsyncButton { try await requestDownload() } label: {
+                        LibraryActionLabel(title: "Request Download", symbol: "arrow.down.circle")
+                    }
+                    .disabledWhenLoading().disabled(account == nil || isAcquiringLicense)
                 }
-            } else {
+                Button { Task { await requestLicense() } } label: {
+                    LibraryActionLabel(title: "Request Purchase", symbol: "bag", tint: .green)
+                }
+                .disabled(account == nil || isAcquiringLicense || archive.price != 0)
                 AsyncButton {
                     guard let account else { return }
                     do {
-                        try await dvm.startDownload(for: archive.package, accountID: account.id)
-                        hint = Hint(message: String(localized: "Download Requested"), color: nil)
-                        if let req = dvm.downloadRequest(forArchive: archive.package) {
-                            navigationPath.append(req)
+                        if try await vm.rotate(id: account.id) != nil {
+                            hint = Hint(message: String(localized: "Account Refreshed"), color: .green)
                         }
                     } catch {
-                        if case ApplePackageError.licenseRequired = error, archive.package.software.price == 0 {
-                            showLicenseAlert = true
-                        } else {
-                            hint = Hint(message: String(localized: "Unable to retrieve download URL. Please try again later.") + "\n" + error.localizedDescription, color: .red)
-                        }
+                        hint = Hint(message: error.localizedDescription, color: .red)
+                        showAccountDetails = true
                         throw error
                     }
                 } label: {
-                    Text("Request Download")
+                    LibraryActionLabel(title: "Refresh Account", symbol: "arrow.clockwise")
                 }
                 .disabledWhenLoading()
+                .disabled(account == nil || isAcquiringLicense || vm.refreshingAccountIDs.contains(selection))
+                Button { showAccountDetails = true } label: {
+                    LibraryActionLabel(title: "Account Details", symbol: "person.crop.circle")
+                }
                 .disabled(account == nil)
+                if let links = AppStoreLinks(appID: archive.package.software.id, region: region) {
+                    RegionalStoreButton(links: links, region: region)
+                    StoreDetailsButton(links: links)
+                }
             }
-        } header: {
-            Text("Download")
+            .buttonStyle(.plain)
         } footer: {
             if let hint {
-                Text(hint.message)
-                    .foregroundStyle(hint.color ?? .primary)
+                Text(hint.message).foregroundStyle(hint.color ?? .primary)
             } else {
                 Text("Package can be installed later in download page.")
             }
         }
     }
+
+    private func requestDownload() async throws {
+        guard let account else { return }
+        do {
+            try await dvm.startDownload(for: archive.package, accountID: account.id)
+            hint = Hint(message: String(localized: "Download Requested"), color: nil)
+            if let req = dvm.downloadRequest(forArchive: archive.package) { navigationPath.append(req) }
+        } catch {
+            if case ApplePackageError.licenseRequired = error, archive.package.software.price == 0 {
+                showLicenseAlert = true
+            } else {
+                hint = Hint(message: String(localized: "Unable to retrieve download URL. Please try again later.") + "\n" + error.localizedDescription, color: .red)
+            }
+            throw error
+        }
+    }
+
 }
 
 extension AppStore.AppPackage {

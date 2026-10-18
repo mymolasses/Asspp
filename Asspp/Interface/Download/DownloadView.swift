@@ -73,7 +73,7 @@ struct DownloadView: View {
                     } else {
                         LazyVGrid(columns: Array(repeating: GridItem(.flexible(minimum: 0), spacing: 10, alignment: .top), count: viewMode == "grid" ? 3 : 1), alignment: .leading, spacing: 12) {
                             ForEach(visiblePackages) { manifest in
-                                PackageManifestRow(manifest: manifest, compact: viewMode == "grid")
+                                PackageManifestRow(manifest: manifest, compact: viewMode == "grid", openDetails: { path.append(manifest) })
                             }
                         }
                     }
@@ -147,14 +147,14 @@ struct DownloadView: View {
             VStack(alignment: .leading, spacing: 4) {
                 Text(title).font(.caption2).foregroundStyle(.secondary)
                 HStack {
-                    Text(value).font(.caption.weight(.medium)).lineLimit(1).truncationMode(.middle)
+                    Text(value).font(.caption.weight(.medium)).lineLimit(1).minimumScaleFactor(0.75).truncationMode(.middle)
                         .redacted(reason: .placeholder, isEnabled: privateValue && accounts.demoMode)
                     Spacer(minLength: 2)
                     Image(systemName: activeFilter == key ? "chevron.up" : "chevron.down").font(.caption2)
                 }
             }
             .foregroundStyle(activeFilter == key ? Color.blue : Color.primary)
-            .frame(maxWidth: .infinity, alignment: .leading).padding(10)
+            .frame(maxWidth: .infinity, alignment: .leading).padding(8)
             .background(Color.secondary.opacity(0.04), in: RoundedRectangle(cornerRadius: 8))
             .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(activeFilter == key ? Color.blue.opacity(0.4) : Color.primary.opacity(0.08)))
         }
@@ -200,6 +200,7 @@ struct DownloadView: View {
 private struct PackageManifestRow: View {
     @ObservedObject var manifest: PackageManifest
     var compact = false
+    let openDetails: () -> Void
     @ObservedObject private var vm = Downloads.this
     @State private var confirmDelete = false
 
@@ -243,55 +244,60 @@ private struct PackageManifestRow: View {
 
     private var detailedCard: some View {
         VStack(alignment: .leading, spacing: 12) {
-            NavigationLink(value: manifest) {
-                HStack(alignment: .top, spacing: 12) {
-                    icon(size: 44)
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text(manifest.displayPackage.software.name).font(.subheadline.bold()).lineLimit(1)
-                        Text(manifest.package.software.sellerName).font(.caption).foregroundStyle(.secondary).lineLimit(1)
-                        Text(manifest.package.software.bundleID).font(.system(.caption2, design: .monospaced)).foregroundStyle(.tertiary).lineLimit(1)
+            Button(action: openDetails) {
+                VStack(alignment: .leading, spacing: 12) {
+                    HStack(alignment: .top, spacing: 12) {
+                        icon(size: 44)
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text(manifest.displayPackage.software.name).font(.subheadline.bold()).lineLimit(1)
+                            Text(manifest.package.software.sellerName).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                            Text(manifest.package.software.bundleID).font(.system(.caption2, design: .monospaced)).foregroundStyle(.tertiary).lineLimit(1)
+                        }
+                        Spacer(minLength: 0)
+                        Text(manifest.completed ? String(localized: "Completed") : manifest.hint)
+                            .font(.caption2.weight(.medium)).lineLimit(1)
+                            .padding(.horizontal, 8).padding(.vertical, 5)
+                            .foregroundStyle(manifest.completed ? Color.green : Color.blue)
+                            .background((manifest.completed ? Color.green : Color.blue).opacity(0.08), in: Capsule())
                     }
-                    Spacer(minLength: 0)
-                    Text(manifest.completed ? String(localized: "Completed") : manifest.hint)
-                        .font(.caption2.weight(.medium)).lineLimit(1)
-                        .padding(.horizontal, 8).padding(.vertical, 5)
-                        .foregroundStyle(manifest.completed ? Color.green : Color.blue)
-                        .background((manifest.completed ? Color.green : Color.blue).opacity(0.08), in: Capsule())
+                    HStack(spacing: 6) {
+                        summary("Version", value: manifest.package.software.version)
+                        summary("File Size", value: fileSize)
+                        summary("Compatibility", value: "\(manifest.package.software.minimumOsVersion)+")
+                        summary("Region", value: manifest.account?.regionCode ?? String(localized: "Local IPA"))
+                    }
+                    if let account = manifest.account {
+                        Text(account.id).font(.caption2).foregroundStyle(.secondary).lineLimit(1).truncationMode(.middle)
+                            .redacted(reason: .placeholder, isEnabled: AppStore.this.demoMode)
+                    }
+                    if !manifest.completed {
+                        SimpleProgress(progress: manifest.state.percent)
+                        Text(manifest.hint).font(.caption).foregroundStyle(manifest.state.error == nil ? Color.secondary : Color.red)
+                    }
                 }
+                .frame(maxWidth: .infinity, alignment: .leading).contentShape(Rectangle())
             }
-            LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 8) {
-                summary("Version", value: manifest.package.software.version)
-                summary("File Size", value: fileSize)
-                summary("Compatibility", value: "\(manifest.package.software.minimumOsVersion)+")
-                summary("Region", value: manifest.account?.regionName ?? String(localized: "Local IPA"))
-            }
-            if let account = manifest.account {
-                Text(account.id).font(.caption2).foregroundStyle(.secondary).lineLimit(1).truncationMode(.middle)
-                    .redacted(reason: .placeholder, isEnabled: AppStore.this.demoMode)
-            }
-            if !manifest.completed {
-                SimpleProgress(progress: manifest.state.percent)
-                Text(manifest.hint).font(.caption).foregroundStyle(manifest.state.error == nil ? Color.secondary : Color.red)
-            }
+            .accessibilityHint("View Details")
             if let links = manifest.appStoreLinks, let account = manifest.account {
                 AppStoreLinkButtons(links: links, region: account.regionCode)
             }
-            HStack(spacing: 10) {
-                NavigationLink(value: manifest) { Text("View Details").frame(maxWidth: .infinity, minHeight: 40) }
-                    .background(Color.secondary.opacity(0.06), in: RoundedRectangle(cornerRadius: 8))
-                if let action = vm.getAvailableActions(for: manifest).first(where: { $0 != .delete }) {
-                    let label = vm.getActionLabel(for: action)
-                    Button { vm.performDownloadAction(for: manifest, action: action) } label: {
-                        Text(label.title).frame(maxWidth: .infinity, minHeight: 40)
-                    }
-                    .foregroundStyle(.blue).background(Color.blue.opacity(0.06), in: RoundedRectangle(cornerRadius: 8))
+            HStack(spacing: 8) {
+                PackageInstallButton(package: manifest, compact: true)
+                ShareLink(item: manifest.targetLocation) {
+                    LibraryActionLabel(title: "Share", symbol: "square.and.arrow.up", compact: true)
                 }
-                Button(role: .destructive) { confirmDelete = true } label: {
-                    Text("Delete").frame(maxWidth: .infinity, minHeight: 40)
+                .disabled(!manifest.completed)
+                Button { confirmDelete = true } label: {
+                    LibraryActionLabel(title: "Delete", symbol: "trash", tint: .red, compact: true)
                 }
-                .foregroundStyle(.red).background(Color.red.opacity(0.05), in: RoundedRectangle(cornerRadius: 8))
             }
-            .font(.caption.weight(.medium))
+            if let action = vm.getAvailableActions(for: manifest).first(where: { $0 != .delete }) {
+                let label = vm.getActionLabel(for: action)
+                Button { vm.performDownloadAction(for: manifest, action: action) } label: {
+                    Label(label.title, systemImage: label.systemImage).font(.caption)
+                }
+                .foregroundStyle(.blue)
+            }
         }
     }
 

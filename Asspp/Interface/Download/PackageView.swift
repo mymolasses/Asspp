@@ -26,16 +26,10 @@ struct PackageView: View {
     }
 
     @Environment(\.dismiss) var dismiss
-    #if os(iOS)
-        @State private var installer: Installer?
-    #endif
-    #if os(macOS)
-        @State private var showDeviceInstall = false
-    #endif
-
     @State private var error = ""
     @State private var displayName = ""
     @State private var confirmDelete = false
+    @State private var showFiles = false
     @State private var signingHint = ""
 
     @ObservedObject private var vm = AppStore.this
@@ -52,9 +46,6 @@ struct PackageView: View {
             Section {
                 packageActions
             }
-            #if os(macOS)
-            if showDeviceInstall && pkg.completed { DeviceCTLInstallSection(package: pkg) }
-            #endif
 
             Section {
                 CopyableRow(label: "Bundle ID", value: archive.software.bundleID, monospaced: true)
@@ -69,12 +60,6 @@ struct PackageView: View {
                 }
             } header: {
                 Text("Details")
-            }
-
-            if let links = pkg.appStoreLinks, let account = pkg.account {
-                Section("App Store") {
-                    AppStoreLinkButtons(links: links, region: account.regionCode)
-                }
             }
 
             if let info = pkg.localIPA {
@@ -171,12 +156,7 @@ struct PackageView: View {
         .formStyle(.grouped)
         .navigationTitle(pkg.displayPackage.software.name)
         .onAppear { displayName = pkg.displayName }
-        #if os(iOS)
-        .sheet(item: $installer, onDismiss: {
-            installer?.destroy()
-            installer = nil
-        }) { InstallerView(installer: $0) }
-        #endif
+        .navigationDestination(isPresented: $showFiles) { FileListView(packageURL: pkg.targetLocation) }
         .confirmationDialog("Delete this package and its file?", isPresented: $confirmDelete, titleVisibility: .visible) {
             Button("Delete", role: .destructive) {
                 downloads.delete(request: pkg)
@@ -186,30 +166,14 @@ struct PackageView: View {
     }
 
     private var packageActions: some View {
-        HStack(spacing: 6) {
-            #if os(iOS)
-            AsyncButton {
-                error = ""
-                do {
-                    installer = try await Installer(archive: archive, path: url, bundleVersion: pkg.installationBundleVersion)
-                } catch {
-                    self.error = error.localizedDescription
-                    throw error
-                }
-            } label: { actionLabel("Install", symbol: "arrow.down.app", tint: .blue) }
-            .disabledWhenLoading().disabled(!pkg.completed)
-            #else
-            Button { showDeviceInstall.toggle() } label: {
-                actionLabel("Install", symbol: "arrow.down.app", tint: .blue)
-            }
-            .disabled(!pkg.completed)
-            #endif
+        LazyVGrid(columns: [GridItem(.flexible(minimum: 0)), GridItem(.flexible(minimum: 0))], spacing: 10) {
+            PackageInstallButton(package: pkg)
             ShareLink(item: url) {
-                actionLabel("Share", symbol: "square.and.arrow.up", tint: .blue)
+                LibraryActionLabel(title: "Share", symbol: "square.and.arrow.up")
             }
             .disabled(!pkg.completed)
-            NavigationLink { FileListView(packageURL: pkg.targetLocation) } label: {
-                actionLabel("View Files", symbol: "folder", tint: .blue)
+            Button { showFiles = true } label: {
+                LibraryActionLabel(title: "View Files", symbol: "folder")
             }
             .disabled(!pkg.completed)
             #if os(macOS)
@@ -222,20 +186,14 @@ struct PackageView: View {
             }
             #endif
             Button { confirmDelete = true } label: {
-                actionLabel("Delete", symbol: "trash", tint: .red)
+                LibraryActionLabel(title: "Delete", symbol: "trash", tint: .red)
+            }
+            if let links = pkg.appStoreLinks, let account = pkg.account {
+                RegionalStoreButton(links: links, region: account.regionCode)
+                StoreDetailsButton(links: links)
             }
         }
         .buttonStyle(.plain)
         .padding(.vertical, 2)
-    }
-
-    private func actionLabel(_ title: LocalizedStringKey, symbol: String, tint: Color) -> some View {
-        VStack(spacing: 6) {
-            Image(systemName: symbol).font(.body.weight(.medium))
-            Text(title).font(.caption2.weight(.medium)).lineLimit(1).minimumScaleFactor(0.8)
-        }
-        .foregroundStyle(tint).frame(maxWidth: .infinity, minHeight: 58)
-        .background(tint.opacity(0.06), in: RoundedRectangle(cornerRadius: 10))
-        .contentShape(RoundedRectangle(cornerRadius: 10))
     }
 }
