@@ -3,4 +3,4 @@
 // CI can modify this file to update version for all configurations
 
 MARKETING_VERSION = 5.0.0
-CURRENT_PROJECT_VERSION = 14
+CURRENT_PROJECT_VERSION = 15
