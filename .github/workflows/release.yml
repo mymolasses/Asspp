@@ -65,6 +65,20 @@ jobs:
         with:
           go-version: '1.25.7'
 
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Prepare build tools
+        run: |
+          set -euo pipefail
+          python3 -m venv "$RUNNER_TEMP/asspp-build-tools"
+          "$RUNNER_TEMP/asspp-build-tools/bin/python" -m pip install --disable-pip-version-check 'cmake==3.31.6'
+          echo "$RUNNER_TEMP/asspp-build-tools/bin" >> "$GITHUB_PATH"
+          if ! command -v xcbeautify >/dev/null; then brew install xcbeautify; fi
+      - name: Test account backups and local IPA features
+        run: |
+          python3 Tests/Scripts/test_release_packaging.py
+          bash Resources/Scripts/test.features.sh
       - name: Build and test local SAP bridge
         run: bash Experiments/LocalSAP/build.sh "$RUNNER_TEMP/local-sap"
 
