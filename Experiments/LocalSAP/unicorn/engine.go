@@ -143,8 +143,40 @@ func (e *Engine) StartBounded(begin, end uint64, timeout time.Duration, limit ui
 			}
 		}
 	}
-	if err := result(C.uc_emu_start(e.handle, C.uint64_t(begin), C.uint64_t(end), C.uint64_t(timeout/time.Microsecond), C.size_t(limit))); err != nil {
-		return err
+	finished := make(chan struct{})
+	watcherDone := make(chan struct{})
+	if e.operation != nil {
+		go func() {
+			defer close(watcherDone)
+			select {
+			case <-finished:
+				return
+			case <-e.operation.Done():
+			}
+			// Repeat until Start returns, covering cancellation immediately
+			// before uc_emu_start enters the interpreter.
+			ticker := time.NewTicker(10 * time.Millisecond)
+			defer ticker.Stop()
+			for {
+				_ = e.Stop()
+				select {
+				case <-finished:
+					return
+				case <-ticker.C:
+				}
+			}
+		}()
+	} else {
+		close(watcherDone)
+	}
+	runErr := result(C.uc_emu_start(e.handle, C.uint64_t(begin), C.uint64_t(end), C.uint64_t(timeout/time.Microsecond), C.size_t(limit)))
+	close(finished)
+	<-watcherDone // never let the watcher access an engine after Close
+	if e.operation != nil && e.operation.Err() != nil {
+		return e.operation.Err()
+	}
+	if runErr != nil {
+		return runErr
 	}
 	var timedOut C.size_t
 	if err := result(C.uc_query(e.handle, C.UC_QUERY_TIMEOUT, &timedOut)); err != nil {

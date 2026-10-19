@@ -33,7 +33,7 @@ jobs:
             swift-checks-${{ runner.os }}-${{ steps.xcode.outputs.cache-key }}-${{ matrix.suite }}-
       - name: Authentication and history regression tests
         if: matrix.suite == 'authentication'
-        run: swift test --package-path Vendor/ApplePackage --filter 'HistoricalDateTests|Protocol270Tests|StoreDownloadEndpointTests'
+        run: swift test --package-path Vendor/ApplePackage --filter 'HistoricalDateTests|Protocol270Tests|StoreDownloadEndpointTests|RemoteIPAMetadataTests|DownloadCacheLifecycleTests'
       - name: Account backups, local IPA and packaging checks
         if: matrix.suite == 'features'
         run: |

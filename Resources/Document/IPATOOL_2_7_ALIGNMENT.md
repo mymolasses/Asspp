@@ -43,4 +43,12 @@ python3 Tests/Scripts/test_release_packaging.py
 
 Swift 协议测试采用注入的响应，不使用实际账号、Keychain 或 Apple 网络；功能测试增加中印手机号备份往返检查。构建脚本另外运行上游 Go 单元测试、桥接输入检查、实际 SAP 握手和虚拟账号标识的 kbsync 解释器测试。后两者会访问 Apple 资源/握手服务，但不使用真实 Apple ID 凭据。
 
-main 推送自动运行 Local SAP iOS App，测试与构建并行，全部通过后提供未签名 IPA。版本 `5.1.0 (18)` 仍需通过侧载工具签名并进行真实账号登录、2FA 和下载的真机验收。
+仅版本标签触发 Release 自动发布；main 和功能分支推送不自动构建。Release 的测试与构建并行，全部成功后发布未签名 IPA。版本 `5.1.0 (18)` 仍需通过侧载工具签名并进行真实账号登录、2FA 和下载的真机验收。
+
+## 5.1.1 补齐项
+
+- 历史版本信息改为 HTTP Range 读取实际 IPA 的 ZIP 目录及主应用 Info.plist。版本来自 CFBundleShortVersionString；日期优先取包内 releaseDate/ReleaseDate，否则使用 ZIP 中 Info.plist 的修改时间，并非保证等于商店上架日期。拒绝回退到下载响应的陈旧版本信息。
+- 支持 ZIP64、XML/二进制 plist、存储/deflate；只读取限定大小的目录和元数据。服务器不返回正确的 206/Content-Range 时终止，不整包下载；校验 Bundle ID、CRC 和长度。
+- kbsync 使用请求 ID 将 Swift 取消传递到独立的 Go 取消入口，并中断正在运行的模拟器。排队前取消和注册竞态均有覆盖，不借用签名锁执行取消。
+- 删除账户前清理该 DSID 的内存及本机 Keychain 缓存，覆盖所有设备 GUID。以 generation 防止删除前已在执行的请求重新写回缓存；Keychain 删除失败会提示，账户不会被静默移除。
+- 新增对应 Swift/Go 回归检查，检查结果以 Release 流水线为准。

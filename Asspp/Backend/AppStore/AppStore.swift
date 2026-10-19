@@ -88,7 +88,12 @@ class AppStore: ObservableObject {
         return account
     }
 
-    func delete(id: UserAccount.ID) {
+    func delete(id: UserAccount.ID) async throws {
+        guard let original = accounts.first(where: { $0.id == id }) else { return }
+        try await ApplePackage.Download.clearCachedAuthentication(for: original.account)
+        // Awaiting Keychain work must not delete a newer login of this account.
+        guard let current = accounts.first(where: { $0.id == id }),
+              current.account == original.account, current.deviceIdentifier == original.deviceIdentifier else { return }
         logger.info("deleting account id: \(id)")
         accounts = accounts.filter { $0.id != id }
         verifiedAccountIDs.remove(id)

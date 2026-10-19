@@ -24,6 +24,7 @@ var signing sync.Mutex
 var sessions = make(map[string]sap.ActionSigner)
 
 type request struct {
+	RequestID      string `json:"requestId"`
 	Operation      string `json:"operation"`
 	DSID           string `json:"dsid"`
 	CacheDirectory string `json:"cacheDirectory"`
@@ -42,11 +43,19 @@ type response struct {
 
 //export AssppSAPSign
 func AssppSAPSign(input *C.char) *C.char {
-	signing.Lock()
-	defer signing.Unlock()
 	answer := response{}
 	var req request
 	err := json.Unmarshal([]byte(C.GoString(input)), &req)
+	var operation context.Context
+	if err == nil && req.Operation == "kbsync" {
+		parent, timeout := context.WithTimeout(context.Background(), 10*time.Minute)
+		defer timeout()
+		ctx, finish := beginSAPOperation(parent, req.RequestID)
+		defer finish()
+		operation = ctx
+	}
+	signing.Lock()
+	defer signing.Unlock()
 	if err == nil && req.Close {
 		if signer := sessions[req.Session]; signer != nil {
 			err = signer.Close()
@@ -62,12 +71,13 @@ func AssppSAPSign(input *C.char) *C.char {
 		var hardware []byte
 		hardware, err = hex.DecodeString(req.Device)
 		if err == nil && req.Operation == "kbsync" {
-			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
-			defer cancel()
-			ctx = assets.WithCacheDirectory(ctx, req.CacheDirectory)
+			ctx := assets.WithCacheDirectory(operation, req.CacheDirectory)
 			ctx = unicorn.WithExecutionBudget(ctx, 5*time.Minute)
 			var dsid uint64
 			dsid, err = validateKBSyncInput(hardware, req.DSID)
+			if err == nil {
+				err = ctx.Err()
+			}
 			if err == nil {
 				var bundle assets.Bundle
 				bundle, err = assets.Load(ctx)
@@ -117,6 +127,9 @@ func AssppSAPSign(input *C.char) *C.char {
 	data, _ := json.Marshal(answer)
 	return C.CString(string(data))
 }
+
+//export AssppSAPCancel
+func AssppSAPCancel(id *C.char) { cancelSAPOperation(C.GoString(id)) }
 
 //export AssppSAPFree
 func AssppSAPFree(value *C.char) { C.free(unsafe.Pointer(value)) }

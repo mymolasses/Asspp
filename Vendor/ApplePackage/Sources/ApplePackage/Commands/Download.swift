@@ -9,6 +9,12 @@ import AsyncHTTPClient
 import Foundation
 
 public enum Download {
+    /// Removes locally stored download authentication blobs for every GUID of
+    /// this account. It does not revoke the account on Apple's servers.
+    public static func clearCachedAuthentication(for account: Account) async throws {
+        try await DownloadKBSyncCache.shared.removeAccount(dsid: account.directoryServicesIdentifier)
+    }
+
     public static func download(
         account: inout Account,
         app: Software,

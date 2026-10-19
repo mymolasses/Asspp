@@ -56,6 +56,7 @@ extension StoreDownloadEndpoint {
                 guard !version.isEmpty else { try ensureFailed(Strings.missingVersionIdentifiers) }
                 try validateKBSyncIdentity(guid: guid, dsid: account.directoryServicesIdentifier)
                 let key = account.directoryServicesIdentifier + ":" + guid
+                let generation = await cache.generation(for: key)
                 if let cached = await cache.value(for: key) {
                     do {
                         let result = try await StoreDownloadEndpoint.ent(endpoint).fetchProduct(account: &account, app: app,
@@ -74,7 +75,7 @@ extension StoreDownloadEndpoint {
                 let result = try await StoreDownloadEndpoint.ent(endpoint).fetchProduct(account: &account, app: app,
                     deviceIdentifier: guid, externalVersionID: version, kbsync: blob, send: send)
                 try validateVersionedResponse(result, app: app, version: version)
-                await cache.store(blob, for: key)
+                await cache.store(blob, for: key, generation: generation)
                 return result
             } catch {
                 try Task.checkCancellation()
@@ -237,9 +238,13 @@ struct DownloadHTTPFailure: LocalizedError {
 actor DownloadKBSyncCache {
     static let shared = DownloadKBSyncCache(persistent: true)
     private var entries: [String: Data] = [:]
+    private var generations: [String: UUID] = [:]
     private let persistent: Bool
-    private let service = (Bundle.main.bundleIdentifier ?? "wiki.qaq.Asspp") + ".kbsync-v1"
-    init(persistent: Bool = false) { self.persistent = persistent }
+    private let service: String
+    init(persistent: Bool = false, service: String = (Bundle.main.bundleIdentifier ?? "wiki.qaq.Asspp") + ".kbsync-v1") {
+        self.persistent = persistent
+        self.service = service
+    }
 
     private func query(_ key: String) -> [String: Any] {
         [kSecClass as String: kSecClassGenericPassword, kSecAttrService as String: service,
@@ -257,7 +262,17 @@ actor DownloadKBSyncCache {
         entries[key] = data
         return data
     }
-    func store(_ value: Data, for key: String) {
+    func generation(for key: String) -> UUID {
+        let dsid = String(key.split(separator: ":", maxSplits: 1).first ?? "")
+        if let value = generations[dsid] { return value }
+        let value = UUID()
+        generations[dsid] = value
+        return value
+    }
+    func store(_ value: Data, for key: String, generation expected: UUID? = nil) {
+        // A request already running when the account was deleted must not
+        // recreate its persistent cache after the deletion has completed.
+        if let expected, generation(for: key) != expected { return }
         if entries.count >= 16, entries[key] == nil { entries.removeAll() }
         entries[key] = value
         guard persistent else { return }
@@ -269,6 +284,31 @@ actor DownloadKBSyncCache {
             SecItemUpdate(query(key) as CFDictionary, [kSecValueData as String: value] as CFDictionary)
         }
     }
+    func removeAccount(dsid: String) throws {
+        guard !dsid.isEmpty else { return }
+        generations[dsid] = UUID()
+        let prefix = dsid + ":"
+        entries = entries.filter { !$0.key.hasPrefix(prefix) }
+        guard persistent else { return }
+        var request: [String: Any] = [kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: service, kSecAttrSynchronizable as String: false,
+            kSecReturnAttributes as String: true, kSecMatchLimit as String: kSecMatchLimitAll]
+        var result: CFTypeRef?
+        let status = SecItemCopyMatching(request as CFDictionary, &result)
+        if status == errSecItemNotFound { return }
+        guard status == errSecSuccess, let items = result as? [[String: Any]] else {
+            throw NSError(domain: NSOSStatusErrorDomain, code: Int(status))
+        }
+        request.removeAll()
+        for item in items {
+            guard let key = item[kSecAttrAccount as String] as? String, key.hasPrefix(prefix) else { continue }
+            let deleted = SecItemDelete(query(key) as CFDictionary)
+            guard deleted == errSecSuccess || deleted == errSecItemNotFound else {
+                throw NSError(domain: NSOSStatusErrorDomain, code: Int(deleted))
+            }
+        }
+    }
+
     func invalidate(key: String, value: Data) {
         // A concurrent request can have stored a newer blob already.
         if entries[key] == value { entries.removeValue(forKey: key) }

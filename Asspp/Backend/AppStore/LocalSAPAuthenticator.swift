@@ -89,24 +89,71 @@ enum LocalSAPAuthenticator {
         let cache = try FileManager.default.url(for: .cachesDirectory, in: .userDomainMask,
             appropriateFor: nil, create: true).appendingPathComponent("AssppSAP", isDirectory: true)
         try FileManager.default.createDirectory(at: cache, withIntermediateDirectories: true)
-        let payload = ["operation": "kbsync", "device": device, "dsid": dsid, "cacheDirectory": cache.path]
+        try Task.checkCancellation()
+        let requestID = UUID().uuidString
+        let payload = ["requestId": requestID, "operation": "kbsync", "device": device, "dsid": dsid, "cacheDirectory": cache.path]
         let input = String(decoding: try JSONEncoder().encode(payload), as: UTF8.self)
-        let result: Data = try await withCheckedThrowingContinuation { continuation in
-            signingQueue.async {
-                do {
-                    guard let output = input.withCString({ AssppSAPSign($0) }) else {
-                        throw Failure(message: "本地 kbsync 未返回结果。")
-                    }
-                    defer { AssppSAPFree(output) }
-                    let response = try JSONDecoder().decode(SignResponse.self, from: Data(String(cString: output).utf8))
-                    if let error = response.error { throw Failure(message: error) }
-                    guard let data = response.signature, !data.isEmpty else { throw Failure(message: "本地 kbsync 为空。") }
-                    continuation.resume(returning: data)
-                } catch { continuation.resume(throwing: error) }
+        let call = CancelledKBSyncCall()
+        let result: Data = try await withTaskCancellationHandler(operation: {
+            try await withCheckedThrowingContinuation { continuation in
+                guard call.install(continuation) else { return }
+                signingQueue.async {
+                    guard !call.isCancelled else { return }
+                    do {
+                        guard let output = input.withCString({ AssppSAPSign($0) }) else {
+                            throw Failure(message: "本地 kbsync 未返回结果。")
+                        }
+                        defer { AssppSAPFree(output) }
+                        let response = try JSONDecoder().decode(SignResponse.self, from: Data(String(cString: output).utf8))
+                        if let error = response.error { throw Failure(message: error) }
+                        guard let data = response.signature, !data.isEmpty else { throw Failure(message: "本地 kbsync 为空。") }
+                        call.finish(.success(data))
+                    } catch { call.finish(.failure(error)) }
+                }
             }
-        }
+        }, onCancel: {
+            call.cancel()
+            requestID.withCString { AssppSAPCancel($0) }
+        })
         try Task.checkCancellation()
         return result
+    }
+
+    private final class CancelledKBSyncCall: @unchecked Sendable {
+        private let lock = NSLock()
+        private var continuation: CheckedContinuation<Data, Error>?
+        private var cancelled = false
+
+        var isCancelled: Bool {
+            lock.lock(); defer { lock.unlock() }
+            return cancelled
+        }
+        func install(_ continuation: CheckedContinuation<Data, Error>) -> Bool {
+            lock.lock()
+            if cancelled {
+                lock.unlock()
+                continuation.resume(throwing: CancellationError())
+                return false
+            }
+            self.continuation = continuation
+            lock.unlock()
+            return true
+        }
+        func finish(_ result: Result<Data, Error>) {
+            lock.lock()
+            let continuation = self.continuation
+            self.continuation = nil
+            lock.unlock()
+            continuation?.resume(with: result)
+        }
+        func cancel() {
+            lock.lock()
+            cancelled = true
+            let continuation = self.continuation
+            self.continuation = nil
+            lock.unlock()
+            continuation?.resume(throwing: CancellationError())
+        }
     }
 
     private static func trustedAppleURL(_ value: String) -> Bool {

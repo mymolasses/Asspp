@@ -27,6 +27,10 @@ struct AccountDetailView: View {
     @State private var needsVerificationCode = false
     @State private var isReauthenticating = false
 
+    @State private var isDeleting = false
+    @State private var deleteError = ""
+    @State private var showDeleteError = false
+
     var body: some View {
         Form {
             Section {
@@ -116,14 +120,25 @@ struct AccountDetailView: View {
             }
         }
         .formStyle(.grouped)
+        .alert("Delete", isPresented: $showDeleteError) { Button("Done", role: .cancel) {} } message: { Text(deleteError) }
         .navigationTitle("Account Details")
         .sheet(isPresented: $showExport) {
             AccountTransferView(mode: .exportBackup, accountIDs: [accountId])
         }
         .confirmationDialog("Delete this account?", isPresented: $confirmDelete, titleVisibility: .visible) {
             Button("Delete", role: .destructive) {
-                vm.delete(id: accountId)
-                dismiss()
+                guard !isDeleting else { return }
+                isDeleting = true
+                Task {
+                    defer { isDeleting = false }
+                    do {
+                        try await vm.delete(id: accountId)
+                        dismiss()
+                    } catch {
+                        deleteError = error.localizedDescription
+                        showDeleteError = true
+                    }
+                }
             }
         }
         .onAppear {
