@@ -175,7 +175,7 @@ enum RemoteIPAReader {
         end.appendLE(UInt32(0x06054b50)); end.appendLE(UInt16(0)); end.appendLE(UInt16(0)); end.appendLE(UInt16(1)); end.appendLE(UInt16(1))
         end.appendLE(UInt32(directory.count)); end.appendLE(UInt32(local.count)); end.appendLE(UInt16(0))
         let archive = try Archive(data: local + directory + end, accessMode: .read)
-        guard let file = archive.first, file.type == .file else { throw Failure.invalidArchive }
+        guard let file = archive.first(where: { _ in true }), file.type == .file else { throw Failure.invalidArchive }
         var output = Data()
         let crc = try archive.extract(file) { chunk in
             try Task.checkCancellation()
