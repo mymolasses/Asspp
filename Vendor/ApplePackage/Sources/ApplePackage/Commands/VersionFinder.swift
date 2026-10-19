@@ -51,7 +51,7 @@ public enum VersionFinder {
         )
 
         guard let items = dict["songList"] as? [[String: Any]], !items.isEmpty else {
-            if let failureType = dict["failureType"] as? String {
+            if let failureType = StoreDownloadEndpoint.failureType(in: dict) {
                 let customerMessage = dict["customerMessage"] as? String
                 switch failureType {
                 case "2034", "2042", "1008", "5002":

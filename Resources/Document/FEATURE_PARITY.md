@@ -70,7 +70,7 @@ bash Resources/Scripts/test.features.sh
 ## 当前验证与构建
 
 - 71 项功能回归检查通过；独立 Web Crypto 成功解密原生导出文件，并逐字段核对账户资料，包含新增的手机号备份检查。
-- 27 项登录、下载及历史协议检查通过，iOS 工作区编译、链接通过。
+- 28 项登录、下载及历史协议检查通过，iOS 工作区编译、链接通过。
 - 本地 SAP 已升级为 ipatool 2.7.0 源码并新增 kbsync；详见 [对齐说明](IPATOOL_2_7_ALIGNMENT.md)。
 - 未签名 Release IPA 通过下述 GitHub Actions 构建；真实 Apple ID 登录、2FA 和真机安装仍需设备验收。
 

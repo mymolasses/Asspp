@@ -290,6 +290,16 @@ final class Protocol270Tests: XCTestCase {
         }
     }
 
+    func testExplicitEmptyFailureTypeHasSuccessSemantics() throws {
+        var result = downloadResult
+        result["failureType"] = ""
+        result["customerMessage"] = ""
+        XCTAssertNoThrow(try StoreDownloadEndpoint.validateVersionedResponse(result, app: app, version: "99"))
+        XCTAssertFalse(StoreDownloadEndpoint.needsFallback(result))
+        XCTAssertTrue(StoreDownloadEndpoint.needsFallback(["failureType": "", "songList": []]))
+        XCTAssertTrue(StoreDownloadEndpoint.needsFallback(["failureType": "", "customerMessage": "No Longer Available"]))
+    }
+
     func testConsumerCatalogFallbackKeepsRegionAndChecksPlatform() async throws {
         var urls: [URL] = []
         let data: [String: Any] = ["data": [["id": "42", "type": "apps", "attributes": [

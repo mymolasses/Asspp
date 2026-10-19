@@ -94,7 +94,7 @@ extension StoreDownloadEndpoint {
             result = try await StoreDownloadEndpoint.redownloadAt(endpoint).fetchProduct(account: &account, app: app,
                 deviceIdentifier: guid, externalVersionID: version, send: send)
             if !needsFallback(result) {
-                if result["failureType"] == nil { try validateVersionedResponse(result, app: app, version: version) }
+                if failureType(in: result) == nil { try validateVersionedResponse(result, app: app, version: version) }
                 return result
             }
         } catch let error as DownloadHTTPFailure where error.status == 500 && error.emptyBody {
@@ -103,7 +103,7 @@ extension StoreDownloadEndpoint {
         if let endpoint = bag?.updateProductEndpoint {
             result = try await StoreDownloadEndpoint.updateProduct(endpoint).fetchProduct(account: &account, app: app,
                 deviceIdentifier: guid, externalVersionID: version, send: send)
-            if result["failureType"] == nil { try validateVersionedResponse(result, app: app, version: version) }
+            if failureType(in: result) == nil { try validateVersionedResponse(result, app: app, version: version) }
         }
         return result
     }
@@ -113,9 +113,14 @@ extension StoreDownloadEndpoint {
             (error as? HTTPClientError) == .cancelled
     }
 
+    static func failureType(in result: [String: Any]) -> String? {
+        guard let value = result["failureType"].map({ String(describing: $0) }), !value.isEmpty else { return nil }
+        return value
+    }
+
     static func needsFallback(_ result: [String: Any]) -> Bool {
-        if result["failureType"].map({ String(describing: $0) }) == retryableFailureType { return true }
-        guard result["failureType"] == nil else { return false }
+        if failureType(in: result) == retryableFailureType { return true }
+        guard failureType(in: result) == nil else { return false }
         if let items = result["songList"], !(items is [Any]) { return false }
         guard (result["songList"] as? [Any] ?? []).isEmpty else { return false }
         let message = (result["customerMessage"] as? String ?? "").trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
@@ -129,7 +134,7 @@ extension StoreDownloadEndpoint {
 
     static func validateVersionedResponse(_ result: [String: Any], app: Software, version: String) throws {
         try ApplePackageError.checkSession(result)
-        guard result["failureType"] == nil, result["customerMessage"] as? String ?? "" == "",
+        guard failureType(in: result) == nil, result["customerMessage"] as? String ?? "" == "",
               let items = result["songList"] as? [[String: Any]], items.count == 1,
               let metadata = items[0]["metadata"] as? [String: Any],
               metadata["itemId"].map({ String(describing: $0) }) == String(app.id),
