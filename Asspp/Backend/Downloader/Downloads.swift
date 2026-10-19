@@ -66,7 +66,10 @@ class Downloads: ObservableObject {
     }
 
     func downloadRequest(forArchive archive: AppStore.AppPackage) -> PackageManifest? {
-        manifests.first { $0.package.id == archive.id && $0.package.externalVersionID == archive.externalVersionID }
+        manifests.first {
+            $0.package.matchesDownload(archive) &&
+                (!$0.completed || FileManager.default.fileExists(atPath: $0.targetLocation.path))
+        }
     }
 
     func add(request: PackageManifest) -> PackageManifest {

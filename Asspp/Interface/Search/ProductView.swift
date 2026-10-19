@@ -246,6 +246,21 @@ struct ProductView: View {
         }
     }
 
+    private var downloadIntent: AppStore.AppPackage.DownloadIntent {
+        let downloaded = dvm.manifests.filter {
+            $0.completed && FileManager.default.fileExists(atPath: $0.targetLocation.path)
+        }.map(\.package)
+        return archive.package.downloadIntent(comparedTo: downloaded)
+    }
+
+    private var downloadTitle: LocalizedStringKey {
+        switch downloadIntent {
+        case .download: "Download"
+        case .downloadLatest: "Download Latest"
+        case .update: "Update"
+        }
+    }
+
     var buttons: some View {
         Section {
             LazyVGrid(columns: [GridItem(.flexible(minimum: 0)), GridItem(.flexible(minimum: 0))], spacing: 10) {
@@ -255,7 +270,7 @@ struct ProductView: View {
                     }
                 } else {
                     AsyncButton { try await requestDownload() } label: {
-                        LibraryActionLabel(title: "Request Download", symbol: "arrow.down.circle")
+                        LibraryActionLabel(title: downloadTitle, symbol: downloadIntent == .update ? "arrow.triangle.2.circlepath" : "arrow.down.circle")
                     }
                     .disabledWhenLoading().disabled(account == nil || isAcquiringLicense)
                 }

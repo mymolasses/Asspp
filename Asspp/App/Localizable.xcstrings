@@ -3953,6 +3953,22 @@
         }
       }
     },
+    "Download Latest" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Download Latest"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "下载最新版"
+          }
+        }
+      }
+    },
     "Request Download" : {
       "localizations" : {
         "en" : {

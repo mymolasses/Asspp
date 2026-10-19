@@ -88,6 +88,24 @@ struct FeatureChecks {
         check(store.importAccounts([user], overwrite: true) == 0, "Refresh cannot be overwritten")
 
         ApplePackage.Configuration.deviceIdentifier = "001122334455"
+        func package(version: String, bundleID: String = "com.example.update", externalID: String? = nil) -> AppStore.AppPackage {
+            var result = AppStore.AppPackage(software: Software(id: 42, bundleID: bundleID, name: "Update fixture", version: version,
+                artistName: "", sellerName: "", description: "", averageUserRating: 0, userRatingCount: 0, artworkUrl: "",
+                screenshotUrls: [], minimumOsVersion: "17.0", fileSizeBytes: "0", releaseDate: "", primaryGenreName: ""))
+            result.externalVersionID = externalID
+            return result
+        }
+        let currentPackage = package(version: "1.10")
+        let oldPackage = package(version: "1.9")
+        check(currentPackage.downloadIntent(comparedTo: []) == .download, "First download action")
+        check(currentPackage.downloadIntent(comparedTo: [oldPackage]) == .update, "Numeric version comparison offers update")
+        check(currentPackage.downloadIntent(comparedTo: [currentPackage]) == .downloadLatest, "Same version is not an update")
+        check(currentPackage.downloadIntent(comparedTo: [oldPackage, package(version: "2.0")]) == .downloadLatest, "Newer local version prevents false update")
+        check(currentPackage.downloadIntent(comparedTo: [package(version: "1.0", bundleID: "other.app")]) == .download, "Other apps do not affect action")
+        check(!oldPackage.matchesDownload(currentPackage), "Unpinned old download cannot hide update action")
+        check(package(version: "1.10", externalID: "123").matchesDownload(currentPackage), "Matching historical version can open existing download")
+        check(!oldPackage.matchesDownload(package(version: "1.9", externalID: "456")), "Pinned download must match external ID")
+        check(package(version: "1.9", externalID: "456").matchesDownload(package(version: "1.9", externalID: "456")), "Matching pinned download")
         try await withThrowingTaskGroup(of: String.self) { group in
             for guid in ["AABBCCDDEEFF", "FFEEDDCCBBAA"] {
                 group.addTask {
