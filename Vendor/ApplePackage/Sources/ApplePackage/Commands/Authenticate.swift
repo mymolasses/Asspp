@@ -28,110 +28,108 @@ public enum Authenticator {
         onVerificationRequired: (([Cookie]) async -> Void)? = nil,
         actionSignature: ((Data, Bag.BagOutput, String) async throws -> String)? = nil
     ) async throws -> Account {
-        let deviceIdentifier = Configuration.deviceIdentifier.uppercased()
-
-        let bagOutput = try await Bag.fetchBag()
-
-        var requestEndpoint = bagOutput.authEndpoint
-        var cookies: [Cookie] = cookies
-        var storeFront = ""
-        var pod: String?
-        var currentAttempt = 1
-        var redirectAttempt = 0
-        var transientAttempt = 0
-        var bodies: [Int: Data] = [:]
-
-        while currentAttempt <= 3, redirectAttempt <= 3 {
-            defer { currentAttempt += 1 }
-            do {
-                // ipatool 2.6 isolates each authentication connection while
-                // retaining cookies and the SAP signer across requests.
+        let code = try AuthenticationInput.normalizeVerificationCode(code)
+        let bag = try await Bag.fetchBag()
+        return try await authenticate(email: email.trimmingCharacters(in: .whitespacesAndNewlines),
+            password: password, code: code, cookies: cookies, bag: bag,
+            deviceIdentifier: Configuration.deviceIdentifier.uppercased(),
+            onVerificationRequired: onVerificationRequired, actionSignature: actionSignature,
+            send: { request in
                 let client = Configuration.makeHTTPClient(redirectConfiguration: .disallow)
                 defer { _ = client.shutdown() }
-                let requestAttempt = redirectAttempt > 0 ? 1 : currentAttempt
-                let data: Data
-                if let saved = bodies[requestAttempt] {
-                    data = saved
-                } else {
-                    data = try authenticationBody(email: email, password: password, code: code,
-                                                  deviceIdentifier: deviceIdentifier, attempt: requestAttempt)
-                    bodies[requestAttempt] = data
-                }
-                var request = try makeRequest(
-                    endpoint: requestEndpoint,
-                    email: email,
-                    password: password,
-                    code: code,
-                    cookies: cookies,
-                    deviceIdentifier: deviceIdentifier,
-                    body: data
-                )
-                if let actionSignature {
-                    request.headers.add(name: "X-Apple-ActionSignature", value: try await actionSignature(data, bagOutput, deviceIdentifier))
-                }
-                let deadline = NIODeadline.now() + .seconds(60)
-                let response: HTTPClient.Response = try await client.execute(request: request, deadline: deadline).get()
-                let result = try parseResponse(
-                    response,
-                    endpoint: requestEndpoint,
-                    email: email,
-                    password: password,
-                    code: code,
-                    cookies: &cookies,
-                    storeFront: &storeFront,
-                    pod: &pod,
-                    attempt: currentAttempt
-                )
-                switch result {
-                case let .success(account):
-                    return account
-                case let .redirect(uRL):
-                    transientAttempt = 0
-                    requestEndpoint = uRL
-                    currentAttempt -= 1 // allow one more attempt when redirect
-                    redirectAttempt += 1
-                    continue
-                case .codeRequired:
-                    await onVerificationRequired?(cookies)
-                    throw ApplePackageError.verificationCodeRequired
-                case .nextAttempt:
-                    transientAttempt = 0
-                    continue
-                case .retry:
-                    transientAttempt += 1
-                    guard transientAttempt < 3 else {
-                        try ensureFailed("Apple 登录服务暂不可用：HTTP 临时错误已重试 3 次，请稍后重试。")
-                    }
-                    // Keep the same Apple attempt/body but obtain a fresh SAP
-                    // signature for every network retry, as Apple's client does.
-                    currentAttempt -= 1
-                    let delay = try authenticationRetryDelay(attempt: transientAttempt,
-                                                            retryAfter: response.headers.first(name: "Retry-After"))
-                    try await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
-                    continue
-                case let .failure(string):
-                    try ensureFailed("\(Strings.authFailed): \(string)")
-                }
-            } catch {
-                // Do not turn malformed responses, signing failures or bad codes
-                // into new credential attempts. Transport retries happen below.
-                throw error
+                return try await client.execute(request: request, deadline: .now() + .seconds(30)).get()
+            }, sleep: { delay in try await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000)) })
+    }
+
+    // The production state machine accepts a transport so regression tests can
+    // exercise redirects/retries without sending credentials or using Apple.
+    static func authenticate(
+        email: String, password: String, code: String, cookies: [Cookie], bag: Bag.BagOutput,
+        deviceIdentifier: String, onVerificationRequired: (([Cookie]) async -> Void)? = nil,
+        actionSignature: ((Data, Bag.BagOutput, String) async throws -> String)?,
+        send: (HTTPClient.Request) async throws -> HTTPClient.Response,
+        sleep: (TimeInterval) async throws -> Void
+    ) async throws -> Account {
+        var endpoint = bag.authEndpoint
+        var cookies = cookies
+        var storeFront = ""
+        var pod: String?
+        var attempt = 1
+        var redirects = 0
+        var retries = 0
+        var data = try authenticationBody(email: email, password: password, code: code,
+                                         deviceIdentifier: deviceIdentifier, attempt: attempt)
+        while attempt <= 3 {
+            try Task.checkCancellation()
+            var request = try makeRequest(endpoint: endpoint, email: email, password: password,
+                code: code, cookies: cookies, deviceIdentifier: deviceIdentifier, body: data)
+            if let actionSignature {
+                request.headers.add(name: "X-Apple-ActionSignature", value: try await actionSignature(data, bag, deviceIdentifier))
+            }
+            let response: HTTPClient.Response
+            do { response = try await send(request) }
+            catch {
+                guard isRetryableTransportError(error) else { throw error }
+                retries += 1
+                guard retries < 3 else { throw error }
+                try await sleep(authenticationRetryDelay(attempt: retries, retryAfter: nil))
+                continue
+            }
+            let result = try parseResponse(response, endpoint: endpoint, email: email,
+                password: password, code: code, cookies: &cookies, storeFront: &storeFront,
+                pod: &pod, attempt: attempt)
+            switch result {
+            case let .success(account): return account
+            case let .redirect(url):
+                guard redirects < 4 else { try ensureFailed("Apple 登录重定向超过 4 次，请稍后重试。") }
+                redirects += 1
+                retries = 0
+                endpoint = url // Preserve this attempt's exact payload, also after attempt 2.
+            case .codeRequired:
+                await onVerificationRequired?(cookies)
+                throw ApplePackageError.verificationCodeRequired
+            case .nextAttempt:
+                retries = 0
+                attempt += 1
+                data = try authenticationBody(email: email, password: password, code: code,
+                                              deviceIdentifier: deviceIdentifier, attempt: attempt)
+            case .retry:
+                retries += 1
+                guard retries < 3 else { try ensureFailed("Apple 登录服务暂不可用，已尝试 3 次，请稍后重试。") }
+                try await sleep(authenticationRetryDelay(attempt: retries,
+                    retryAfter: response.headers.first(name: "Retry-After")))
+            case let .failure(message): try ensureFailed("\(Strings.authFailed): \(message)")
             }
         }
+        try ensureFailed("Apple 登录超过允许的认证次数，请稍后重试。")
+    }
 
-        try ensureFailed("Apple 登录超过允许的重定向或认证次数，请稍后重试。")
+    static func isRetryableTransportError(_ error: Error) -> Bool {
+        if error is CancellationError { return false }
+        if let error = error as? HTTPClientError {
+            return [.connectTimeout, .readTimeout, .writeTimeout, .deadlineExceeded, .remoteConnectionClosed].contains(error)
+        }
+        if let error = error as? IOError { return [ECONNRESET, EPIPE, ETIMEDOUT].contains(error.errnoCode) }
+        if let error = error as? URLError {
+            return [.timedOut, .networkConnectionLost].contains(error.code)
+        }
+        if let error = error as? ChannelError { return error == .eof || error == .ioOnClosedChannel }
+        return false
     }
 
     static func shouldRetryResponse(status: Int, location: String?, body: Data?) -> Bool {
         // Populated Apple errors must reach the parser, even on HTTP 429.
-        if let body, (try? decodeLoginBody(body, status: status, contentType: nil)) != nil { return false }
-        if [301, 302, 303, 307, 308].contains(status) {
+        if let body, let result = try? decodeLoginBody(body, status: status, contentType: nil),
+           ["failureType", "customerMessage", "passwordToken", "dsPersonId"].contains(where: {
+               !(result[$0] as? String ?? "").isEmpty
+           }) { return false }
+        if [301, 302, 307, 308].contains(status) {
             // Some Apple edges intermittently return a bare redirect. There is
             // no safe destination to follow, but repeating the original signed
             // request on a fresh connection can recover without guessing one.
             return location?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty != false
         }
-        return [204, 404, 429].contains(status) || (500...599).contains(status)
+        return [204, 403, 404, 429].contains(status) || (500...599).contains(status)
     }
 
     static func authenticationRetryDelay(attempt: Int, retryAfter: String?, now: Date = Date()) throws -> TimeInterval {
@@ -157,13 +155,16 @@ public enum Authenticator {
     }
 
     static func redirectURL(status: Int, location: String?, from endpoint: URL) throws -> URL? {
-        guard [301, 302, 303, 307, 308].contains(status) else { return nil }
+        if status == 303 { try ensureFailed("Apple 登录不支持 HTTP 303 重定向。") }
+        guard [301, 302, 307, 308].contains(status) else { return nil }
         guard let location, !location.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             try ensureFailed("Apple 登录重定向异常：HTTP \(status) 缺少 Location，无法继续验证。请稍后重试。")
         }
         guard let url = URL(string: location.trimmingCharacters(in: .whitespacesAndNewlines), relativeTo: endpoint)?.absoluteURL,
               url.scheme?.lowercased() == "https", let host = url.host?.lowercased(),
-              host.hasSuffix(".itunes.apple.com"), url.user == nil, url.password == nil,
+              (host == "buy.itunes.apple.com" || host.hasSuffix("-buy.itunes.apple.com") || host == "auth.itunes.apple.com"),
+              ["/WebObjects/MZFinance.woa/wa/authenticate", "/WebObjects/MZFinance.woa/wa/authenticate/", "/auth/v1/native", "/auth/v1/native/", "/auth/v1/native/fast/"].contains(url.path),
+              url.user == nil, url.password == nil,
               url.fragment == nil, url.port == nil || url.port == 443 else {
             try ensureFailed("Apple 登录返回不可信重定向，已停止发送登录信息。")
         }
@@ -205,6 +206,9 @@ public enum Authenticator {
             ("Accept", "application/x-apple-plist, application/xml"),
             ("Accept-Encoding", "identity"),
         ]
+        if let storefront = AuthenticationInput.phoneNumberStorefront(email) {
+            headers.append(("X-Apple-Store-Front", storefront))
+        }
         for item in cookies.buildCookieHeader(endpoint) {
             headers.append(item)
         }
@@ -278,13 +282,10 @@ public enum Authenticator {
             return .nextAttempt
         }
 
-        if let failureType = dic["failureType"] as? String,
-           failureType.isEmpty,
-           code.isEmpty,
-           let customerMessage = dic["customerMessage"] as? String,
-           customerMessage == "MZFinance.BadLogin.Configurator_message"
-        {
-            return .codeRequired
+        if (dic["failureType"] as? String ?? "").isEmpty,
+           dic["customerMessage"] as? String == "MZFinance.BadLogin.Configurator_message" {
+            if code.isEmpty { return .codeRequired }
+            throw ApplePackageError.invalidVerificationCode
         }
 
         if let failureType = dic["failureType"] as? String, failureType == "5005" {
@@ -296,6 +297,10 @@ public enum Authenticator {
         }
 
         let failureMessage = (dic["dialog"] as? [String: Any])?["explanation"] as? String ?? (dic["customerMessage"] as? String)
+        guard let token = dic["passwordToken"] as? String, !token.isEmpty,
+              let dsid = dic["dsPersonId"] as? String, !dsid.isEmpty else {
+            try ensureFailed(failureMessage ?? "Apple 未返回有效登录凭据，请稍后重试或更换网络。")
+        }
         let accountInfoDic = try (dic["accountInfo"] as? [String: Any]).get(failureMessage ?? Strings.missingAccountInfo)
         let addressInfoDic = try (accountInfoDic["address"] as? [String: Any]).get(failureMessage ?? Strings.missingAddress)
 

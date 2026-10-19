@@ -36,8 +36,8 @@ enum LocalSAPAuthenticator {
 
     static func authenticate(email: String, password: String, code: String, cookies: [Cookie]) async throws -> Account {
         let key = email.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() + ":" + Configuration.deviceIdentifier
+        let normalizedCode = try AuthenticationInput.normalizeVerificationCode(code)
         let previousChallenge = await challenges.take(key)
-        let normalizedCode = code.filter { !$0.isWhitespace }
         let loginCookies = normalizedCode.isEmpty ? cookies : (previousChallenge ?? cookies)
         // Resolve this for each login: LiveContainer can relocate the sandbox
         // and does not necessarily export HOME to the embedded Go runtime.
@@ -83,6 +83,30 @@ enum LocalSAPAuthenticator {
                 }
             }
         }
+    }
+
+    static func generateKBSync(device: String, dsid: String) async throws -> Data {
+        let cache = try FileManager.default.url(for: .cachesDirectory, in: .userDomainMask,
+            appropriateFor: nil, create: true).appendingPathComponent("AssppSAP", isDirectory: true)
+        try FileManager.default.createDirectory(at: cache, withIntermediateDirectories: true)
+        let payload = ["operation": "kbsync", "device": device, "dsid": dsid, "cacheDirectory": cache.path]
+        let input = String(decoding: try JSONEncoder().encode(payload), as: UTF8.self)
+        let result: Data = try await withCheckedThrowingContinuation { continuation in
+            signingQueue.async {
+                do {
+                    guard let output = input.withCString({ AssppSAPSign($0) }) else {
+                        throw Failure(message: "本地 kbsync 未返回结果。")
+                    }
+                    defer { AssppSAPFree(output) }
+                    let response = try JSONDecoder().decode(SignResponse.self, from: Data(String(cString: output).utf8))
+                    if let error = response.error { throw Failure(message: error) }
+                    guard let data = response.signature, !data.isEmpty else { throw Failure(message: "本地 kbsync 为空。") }
+                    continuation.resume(returning: data)
+                } catch { continuation.resume(throwing: error) }
+            }
+        }
+        try Task.checkCancellation()
+        return result
     }
 
     private static func trustedAppleURL(_ value: String) -> Bool {

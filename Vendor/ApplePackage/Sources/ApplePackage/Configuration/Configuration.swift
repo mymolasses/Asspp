@@ -34,6 +34,9 @@ public enum Configuration {
         }
     }
 
+    /// Installed by the native app. No remote signing service is used.
+    public static var kbsyncProvider: ((String, String) async throws -> Data)?
+
     public static var userAgent: String = "Configurator/2.17 (Macintosh; OS X 15.2; 24C5089c) AppleWebKit/0620.1.16.11.6"
 
     public static var tlsConfiguration: TLSConfiguration = {

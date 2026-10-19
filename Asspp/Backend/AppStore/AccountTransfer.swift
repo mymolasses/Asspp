@@ -32,7 +32,7 @@ enum AccountTransfer {
 
         func userAccount() throws -> AppStore.UserAccount {
             let email = email.trimmingCharacters(in: .whitespacesAndNewlines)
-            guard !email.isEmpty, email.contains("@"), !password.isEmpty,
+            guard !email.isEmpty, (email.contains("@") || AuthenticationInput.phoneNumberStorefront(email) != nil), !password.isEmpty,
                   !passwordToken.isEmpty, !directoryServicesIdentifier.isEmpty,
                   ApplePackage.Configuration.countryCode(for: store) != nil,
                   !deviceIdentifier.isEmpty, deviceIdentifier.count <= 128,

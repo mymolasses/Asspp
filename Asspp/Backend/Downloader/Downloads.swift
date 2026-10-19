@@ -183,6 +183,8 @@ class Downloads: ObservableObject {
         try FileManager.default.moveItem(at: downloadedFile, to: tempFile)
         defer { try? FileManager.default.removeItem(at: tempFile) }
 
+        try SignatureInjector.validateMobilePackage(at: tempFile, expectedBundleID: manifest.package.software.bundleID)
+
         logger.info("injecting signatures: \(manifest.id)")
         try await SignatureInjector.inject(
             sinfs: manifest.signatures,

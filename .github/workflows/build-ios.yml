@@ -40,6 +40,13 @@ jobs:
         run: |
           xcrun lipo "$RUNNER_TEMP/local-sap/libasspp-sap.a" -verify_arch arm64
           xcrun lipo "$RUNNER_TEMP/local-sap/libunicorn.a" -verify_arch arm64
+      - name: Upload device SAP libraries
+        uses: actions/upload-artifact@v4
+        with:
+          name: LocalSAP-ios-arm64-${{ github.sha }}
+          path: ${{ runner.temp }}/local-sap/
+          if-no-files-found: error
+          retention-days: 14
       - name: Restore Xcode build cache
         uses: actions/cache@v4
         with:
@@ -61,6 +68,7 @@ jobs:
               info = plistlib.loads(archive.read('Payload/Asspp.app/Info.plist'))
               assert info['CFBundleIdentifier'] == 'wiki.qaq.Asspp'
               assert 'iPhoneOS' in info['CFBundleSupportedPlatforms']
+              assert 'Payload/Asspp.app/embedded.mobileprovision' not in archive.namelist(), 'Expected unsigned IPA'
               with archive.open('Payload/Asspp.app/' + info['CFBundleExecutable']) as executable:
                   magic, architecture = struct.unpack('<II', executable.read(8))
               assert magic == 0xfeedfacf and architecture == 0x0100000c

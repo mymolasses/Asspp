@@ -67,25 +67,26 @@ bash Resources/Scripts/test.features.sh
 
 覆盖备份版本、旧数组、Unicode 密码、错误密码、GCM 篡改、设备标识校验、重复账户、刷新冲突、并发 GUID 隔离、旧存储迁移、IPA 原始字节、重复导入、重命名、非法元数据、路径隔离和删除源文件保护。
 
-## 本次验证结果
+## 当前验证与构建
 
-- 66 项功能回归检查通过；独立 Web Crypto 成功解密原生导出文件，并逐字段核对账户资料。
-- iOS 设备目标与 macOS 目标的 Swift 编译及资源处理通过；两端最终链接均因缺少 `asspp-sap` 静态库失败。
-- 未使用真实 Apple ID 验证登录、2FA 或设备安装，也未生成可安装 IPA。
+- 71 项功能回归检查通过；独立 Web Crypto 成功解密原生导出文件，并逐字段核对账户资料，包含新增的手机号备份检查。
+- 27 项登录、下载及历史协议检查通过，iOS 工作区编译、链接通过。
+- 本地 SAP 已升级为 ipatool 2.7.0 源码并新增 kbsync；详见 [对齐说明](IPATOOL_2_7_ALIGNMENT.md)。
+- 未签名 Release IPA 通过下述 GitHub Actions 构建；真实 Apple ID 登录、2FA 和真机安装仍需设备验收。
 
 ## 构建依赖
 
 ### GitHub Actions 测试包
 
-推送 `codex/account-backup-local-ipa` 分支会自动触发 **Local SAP iOS App**；也可以手动运行该工作流。工作流先运行功能回归，再构建并测试 SAP 静态库，随后编译 Release IPA，检查 arm64 架构和 ZIP 完整性，并上传：
+推送 `main` 分支会自动触发 **Local SAP iOS App**；也可以手动运行该工作流。工作流先运行功能回归，再构建并测试 SAP 静态库，随后编译 Release IPA，检查 arm64 架构和 ZIP 完整性，并上传：
 
-- `Asspp-features-unsigned-<运行编号>`：未签名 IPA 与 SHA-256 校验文件，供侧载工具签名/安装。
-- `LocalSAP-ios-arm64-<运行编号>`：可复用的设备静态库与 C 头文件。
+- `Asspp-ios-<提交 SHA>`：未签名 IPA 与 SHA-256 校验文件，供侧载工具签名/安装。
+- `LocalSAP-ios-arm64-<提交 SHA>`：可复用的设备静态库与 C 头文件。
 
 产物保留 14 天。工作流使用固定版本的 Go 与 CMake；不需要 Apple ID 或开发者签名证书，也不发布 Release。打包脚本不会执行 Git 清理或覆盖已有的 `Developer.xcconfig`。
 
 ### 本地构建
 
-当前仓库分支使用本地 SAP 登录，`Configuration/Base.xcconfig` 链接 `libasspp-sap.a` 和 `libunicorn.a`。源码归档不包含这两个生成库。它们由 `Experiments/LocalSAP/build.sh` 构建，通过 `LOCAL_SAP_LIBRARY_DIR` 提供；现有 `.github/workflows/local-sap-app.yml` 包含相应步骤。
+当前 main 分支使用本地 SAP 登录，`Configuration/Base.xcconfig` 链接 `libasspp-sap.a` 和 `libunicorn.a`。源码归档不包含这两个生成库。它们由 `Experiments/LocalSAP/build.sh` 构建，通过 `LOCAL_SAP_LIBRARY_DIR` 提供；现有 `.github/workflows/local-sap-app.yml` 包含相应步骤。
 
 没有这些库时，Xcode 可以进行 Swift 编译检查，但最终链接无法生成可安装包。真实 Apple 登录、2FA 与设备安装还需在包含这些库的构建中验证。

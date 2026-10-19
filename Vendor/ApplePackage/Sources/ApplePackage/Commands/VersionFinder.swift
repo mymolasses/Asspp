@@ -54,8 +54,8 @@ public enum VersionFinder {
             if let failureType = dict["failureType"] as? String {
                 let customerMessage = dict["customerMessage"] as? String
                 switch failureType {
-                case "2034", "2042":
-                    try ensureFailed(Strings.passwordTokenExpired)
+                case "2034", "2042", "1008", "5002":
+                    throw ApplePackageError.sessionExpired
                 case "9610":
                     throw ApplePackageError.licenseRequired
                 default:

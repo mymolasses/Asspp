@@ -61,6 +61,18 @@ struct FeatureChecks {
         check(oldUser.deviceIdentifier == nil, "Existing Keychain records remain decodable")
         check(AccountTransfer.WebAccount(oldUser, fallbackDeviceIdentifier: "001122334455").deviceIdentifier == "001122334455", "Legacy export GUID")
 
+        for identifier in ["+8613912345678", "9123456789"] {
+            var phone = user
+            phone.account.email = identifier
+            let data = try AccountTransfer.export(accounts: [.init(phone, fallbackDeviceIdentifier: "001122334455")], password: password)
+            let restored = try AccountTransfer.decode(data, password: password)
+            check(restored[0].id == identifier, "Phone account encrypted backup round trip")
+            check(restored[0].deviceIdentifier == user.deviceIdentifier, "Phone account GUID retained")
+        }
+        var malformedPhone = AccountTransfer.WebAccount(user, fallbackDeviceIdentifier: "001122334455")
+        malformedPhone.email = "+13912345678"
+        rejects("Unsupported phone format must fail validation") { _ = try malformedPhone.userAccount() }
+
         let store = AppStore()
         store.accounts = [user]
         var replacement = user

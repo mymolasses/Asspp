@@ -13,6 +13,8 @@ public enum Bag {
     public struct BagOutput {
         public var authEndpoint: URL
         public var updateProductEndpoint: URL?
+        public var entDownloadEndpoint: URL? = nil
+        public var redownloadEndpoint: URL? = nil
         public var sapSetup: String? = nil
         public var sapCertificate: String? = nil
         public var sapVersion: UInt32? = nil
@@ -76,21 +78,18 @@ public enum Bag {
             return BagOutput(authEndpoint: URL(string: defaultAuthEndpoint)!, updateProductEndpoint: nil)
         }
 
-        // authenticateAccount used to live inside the nested urlBag dict,
-        // newer bag responses move it to the plist root
-        let urlBag = plist["urlBag"] as? [String: Any] ?? [:]
-        let authURLString = (urlBag["authenticateAccount"] as? String) ?? (plist["authenticateAccount"] as? String)
-        let updateProductURL = (urlBag["updateProduct"] as? String).flatMap(normalizedUpdateProductEndpoint)
+        return parse(plist)
+    }
 
-        guard let authURLString,
-              let authURL = normalizedAuthEndpoint(from: authURLString)
-        else {
-            APLogger.debug("bag: no authenticateAccount in plist, using default auth endpoint")
-            return BagOutput(authEndpoint: URL(string: defaultAuthEndpoint)!, updateProductEndpoint: updateProductURL)
+    static func parse(_ plist: [String: Any]) -> BagOutput {
+        let urlBag = plist["urlBag"] as? [String: Any] ?? plist
+        let auth = (urlBag["authenticateAccount"] as? String) ?? (plist["authenticateAccount"] as? String)
+        var output = BagOutput(authEndpoint: auth.flatMap(normalizedAuthEndpoint) ?? URL(string: defaultAuthEndpoint)!,
+            updateProductEndpoint: (urlBag["updateProduct"] as? String).flatMap { downloadEndpoint($0, path: "/up/updateProduct") })
+        output.redownloadEndpoint = (urlBag["redownloadProduct"] as? String).flatMap { downloadEndpoint($0, path: "/r/redownload") }
+        output.entDownloadEndpoint = (urlBag["volumeStoreDownloadProduct"] as? String).flatMap {
+            downloadEndpoint($0, path: "/WebObjects/DownloadDispatch.woa/wa/ent/download")
         }
-
-        APLogger.info("bag: auth endpoint resolved to \(authURL)")
-        var output = BagOutput(authEndpoint: authURL, updateProductEndpoint: updateProductURL)
         output.sapSetup = urlBag["sign-sap-setup"] as? String
         output.sapCertificate = urlBag["sign-sap-setup-cert"] as? String
         if let value = urlBag["sign-sap-version"] as? String { output.sapVersion = UInt32(value) }
@@ -98,26 +97,29 @@ public enum Bag {
         return output
     }
 
-    /// Preserve the bag endpoint exactly, as ipatool does. Appending a guessed
-    /// `/fast/` path changes the signed login protocol and may trigger redirects.
-    static func normalizedAuthEndpoint(from urlString: String) -> URL? {
-        guard let comps = URLComponents(string: urlString),
-              comps.scheme?.lowercased() == "https", let host = comps.host?.lowercased(),
-              host.hasSuffix(".itunes.apple.com"), comps.user == nil, comps.password == nil,
-              comps.fragment == nil, comps.port == nil || comps.port == 443 else { return nil }
-        return comps.url
+    /// v2.7.0 normalizes the finance auth path's trailing slash while keeping
+    /// the bag host and query. Native endpoints retain their own path.
+    static func normalizedAuthEndpoint(from value: String) -> URL? {
+        guard var c = URLComponents(string: value), c.scheme == "https", let host = c.host?.lowercased(),
+              c.user == nil, c.password == nil, c.fragment == nil,
+              c.percentEncodedPath == c.path, c.port == nil || c.port == 443 else { return nil }
+        let finance = "/WebObjects/MZFinance.woa/wa/authenticate"
+        if host == "buy.itunes.apple.com" || host.hasSuffix("-buy.itunes.apple.com") {
+            guard c.path == finance || c.path == finance + "/" else { return nil }
+            c.path = finance + "/"
+        } else {
+            guard host == "auth.itunes.apple.com",
+                  ["/auth/v1/native", "/auth/v1/native/", "/auth/v1/native/fast/"].contains(c.path) else { return nil }
+        }
+        return c.url
     }
 
-    /// Only accept the download endpoint currently advertised by Apple's bag.
-    /// This prevents a malformed or intercepted bag from redirecting account
-    /// cookies to an arbitrary host.
-    private static func normalizedUpdateProductEndpoint(from urlString: String) -> URL? {
-        guard let url = URL(string: urlString),
-              url.scheme == "https",
-              url.host == "downloaddispatch.itunes.apple.com",
-              url.path == "/up/updateProduct"
-        else { return nil }
-        return url
+    static func downloadEndpoint(_ value: String, path: String) -> URL? {
+        guard let c = URLComponents(string: value), c.scheme == "https",
+              c.host == "downloaddispatch.itunes.apple.com", c.port == nil,
+              c.user == nil, c.password == nil, c.fragment == nil,
+              c.query == nil, c.path == path, c.percentEncodedPath == path else { return nil }
+        return c.url
     }
 
     /// The bag XML response wraps the plist inside `<Document><Protocol><plist>...</plist>`.

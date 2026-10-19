@@ -9,8 +9,12 @@ import (
 	"context"
 	"encoding/hex"
 	"encoding/json"
+	"fmt"
 	"github.com/majd/ipatool/v2/internal/sap"
 	"github.com/majd/ipatool/v2/internal/sap/assets"
+	"github.com/majd/ipatool/v2/internal/sap/machine"
+	"github.com/majd/ipatool/v2/internal/sap/unicorn"
+	"strconv"
 	"sync"
 	"time"
 	"unsafe"
@@ -20,6 +24,8 @@ var signing sync.Mutex
 var sessions = make(map[string]sap.ActionSigner)
 
 type request struct {
+	Operation      string `json:"operation"`
+	DSID           string `json:"dsid"`
 	CacheDirectory string `json:"cacheDirectory"`
 	Session        string `json:"session"`
 	Close          bool   `json:"close"`
@@ -55,6 +61,29 @@ func AssppSAPSign(input *C.char) *C.char {
 	if err == nil {
 		var hardware []byte
 		hardware, err = hex.DecodeString(req.Device)
+		if err == nil && req.Operation == "kbsync" {
+			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
+			defer cancel()
+			ctx = assets.WithCacheDirectory(ctx, req.CacheDirectory)
+			ctx = unicorn.WithExecutionBudget(ctx, 5*time.Minute)
+			var dsid uint64
+			dsid, err = validateKBSyncInput(hardware, req.DSID)
+			if err == nil {
+				var bundle assets.Bundle
+				bundle, err = assets.Load(ctx)
+				if err == nil {
+					answer.Signature, err = machine.GenerateKBSync(ctx, bundle, hardware, dsid)
+				}
+			}
+			if err != nil {
+				answer.Error = err.Error()
+			}
+			data, _ := json.Marshal(answer)
+			return C.CString(string(data))
+		}
+		if err == nil && req.Operation != "" && req.Operation != "sign" {
+			err = fmt.Errorf("unsupported SAP operation")
+		}
 		if err == nil {
 			// Asset extraction, emulator startup and the Apple SAP setup are
 			// separate slow phases on iOS. A 10 minute shared deadline can expire
@@ -92,3 +121,14 @@ func AssppSAPSign(input *C.char) *C.char {
 //export AssppSAPFree
 func AssppSAPFree(value *C.char) { C.free(unsafe.Pointer(value)) }
 func main()                      {}
+
+func validateKBSyncInput(hardware []byte, value string) (uint64, error) {
+	if len(hardware) != 6 {
+		return 0, fmt.Errorf("kbsync requires a six-byte device GUID")
+	}
+	dsid, err := strconv.ParseUint(value, 10, 64)
+	if err != nil || dsid == 0 {
+		return 0, fmt.Errorf("kbsync requires a nonzero numeric account DSID")
+	}
+	return dsid, nil
+}

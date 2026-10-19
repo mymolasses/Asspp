@@ -37,9 +37,22 @@ const (
 	RegR9  = int(C.UC_X86_REG_R9)
 )
 
+type executionBudgetKey struct{}
+
+// Desktop JIT and the iOS interpreter have different throughput. Opt in only
+// for the one-shot kbsync runtime, keeping ordinary SAP sessions unchanged.
+func WithExecutionBudget(ctx context.Context, budget time.Duration) context.Context {
+	if budget > 5*time.Minute {
+		budget = 5 * time.Minute
+	}
+	return context.WithValue(ctx, executionBudgetKey{}, budget)
+}
+
 type Engine struct {
-	handle *C.uc_engine
-	hooks  map[*Hook]bool
+	budget    time.Duration
+	operation context.Context
+	handle    *C.uc_engine
+	hooks     map[*Hook]bool
 }
 type CodeHook func(uint64, uint32)
 type Hook struct {
@@ -62,6 +75,10 @@ func New(ctx context.Context) (*Engine, error) {
 		return nil, err
 	}
 	e := &Engine{hooks: make(map[*Hook]bool)}
+	if budget, ok := ctx.Value(executionBudgetKey{}).(time.Duration); ok && budget > 0 {
+		e.budget = budget
+		e.operation = ctx
+	}
 	if err := result(C.uc_open(C.UC_ARCH_X86, C.UC_MODE_64, &e.handle)); err != nil {
 		return nil, err
 	}
@@ -108,6 +125,23 @@ func (e *Engine) Start(begin, end uint64) error { return e.StartBounded(begin, e
 func (e *Engine) StartBounded(begin, end uint64, timeout time.Duration, limit uint64) error {
 	if timeout <= 0 {
 		return errors.New("invalid timeout")
+	}
+	if e.budget > timeout {
+		timeout = e.budget
+	}
+	if e.operation != nil {
+		if err := e.operation.Err(); err != nil {
+			return err
+		}
+		if deadline, ok := e.operation.Deadline(); ok {
+			remaining := time.Until(deadline)
+			if remaining <= 0 {
+				return context.DeadlineExceeded
+			}
+			if remaining < timeout {
+				timeout = remaining
+			}
+		}
 	}
 	if err := result(C.uc_emu_start(e.handle, C.uint64_t(begin), C.uint64_t(end), C.uint64_t(timeout/time.Microsecond), C.size_t(limit))); err != nil {
 		return err

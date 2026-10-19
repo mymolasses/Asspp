@@ -29,12 +29,12 @@ struct AddAccountView: View {
                 Text("本地登录：首次使用需从 Apple 下载并缓存签名运行时，可能需要数分钟。")
             }
             Section {
-                TextField("Email (Apple ID)", text: $email)
+                TextField("Email or Phone Number (Apple ID)", text: $email)
                 #if os(iOS)
                     .disableAutocorrection(true)
                     .autocapitalization(.none)
-                    .textContentType(.emailAddress)
-                    .keyboardType(.emailAddress)
+                    .textContentType(.username)
+                    .keyboardType(.default)
                 #endif
                 if isPasswordHidden {
                     SecureField("Password", text: $password)

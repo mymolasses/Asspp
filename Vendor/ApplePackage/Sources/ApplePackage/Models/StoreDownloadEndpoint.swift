@@ -7,13 +7,14 @@
 
 import Foundation
 
-/// MZFinance product download endpoints. `volumeStore` is the primary endpoint,
-/// but Apple intermittently rejects it with failureType 5002; the legacy
-/// `redownload` dispatch endpoint serves the same payload and is used as fallback.
+/// Product download endpoints. A bag-validated ent/download with local kbsync
+/// is preferred; volumeStore, redownload and updateProduct provide recovery.
 enum StoreDownloadEndpoint {
     case volumeStore
     case redownload
     case updateProduct(URL)
+    case ent(URL)
+    case redownloadAt(URL)
 
     /// The failureType returned by `volumeStore` that signals callers to retry
     /// with the `redownload` endpoint.
@@ -22,9 +23,9 @@ enum StoreDownloadEndpoint {
     /// The two endpoints name the external version ID differently in the payload.
     var externalVersionIDKey: String {
         switch self {
-        case .volumeStore, .updateProduct:
+        case .volumeStore, .ent:
             return "externalVersionId"
-        case .redownload:
+        case .redownload, .redownloadAt, .updateProduct:
             return "appExtVrsId"
         }
     }
@@ -39,7 +40,7 @@ enum StoreDownloadEndpoint {
         case .redownload:
             comps.host = "downloaddispatch.itunes.apple.com"
             comps.path = "/r/redownload"
-        case let .updateProduct(endpoint):
+        case let .updateProduct(endpoint), let .ent(endpoint), let .redownloadAt(endpoint):
             guard var updateComponents = URLComponents(url: endpoint, resolvingAgainstBaseURL: false) else {
                 try ensureFailed(Strings.invalidResponse)
             }

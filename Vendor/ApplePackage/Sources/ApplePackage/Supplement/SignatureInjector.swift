@@ -29,14 +29,35 @@ public enum SignatureInjector {
         try injectMetadata(iTunesMetadata, into: archive)
     }
 
+    /// Reject a wrong-platform response before publishing a completed download.
+    public static func validateMobilePackage(at url: URL, expectedBundleID: String) throws {
+        let archive = try Archive(url: url, accessMode: .read)
+        let entries = archive.filter { entry in
+            let parts = entry.path.split(separator: "/")
+            return parts.count == 3 && parts[0] == "Payload" && parts[1].hasSuffix(".app") && parts[2] == "Info.plist" && entry.type == .file
+        }
+        guard entries.count == 1, let entry = entries.first, entry.uncompressedSize <= 2 * 1024 * 1024 else {
+            try ensureFailed("下载的 IPA 主应用无效。")
+        }
+        var data = Data()
+        let checksum = try archive.extract(entry, consumer: { chunk in
+            guard data.count + chunk.count <= 2 * 1024 * 1024 else { try ensureFailed("IPA 信息文件过大。") }
+            data.append(chunk)
+        })
+        guard checksum == entry.checksum, data.count == entry.uncompressedSize,
+              let info = try PropertyListSerialization.propertyList(from: data, format: nil) as? [String: Any],
+              info["CFBundleIdentifier"] as? String == expectedBundleID,
+              (info["CFBundleSupportedPlatforms"] as? [String])?.contains("iPhoneOS") == true ||
+                info["DTPlatformName"] as? String == "iphoneos" else {
+            try ensureFailed("下载的安装包与请求的 iOS App 不匹配。")
+        }
+    }
+
     private static func readBundleName(from archive: Archive) throws -> String {
         for entry in archive {
-            if entry.path.contains(".app/Info.plist"), !entry.path.contains("/Watch/") {
-                let components = entry.path.split(separator: "/")
-                if components.count >= 2 {
-                    let appName = components[components.count - 2]
-                    return String(appName.replacingOccurrences(of: ".app", with: ""))
-                }
+            let components = entry.path.split(separator: "/")
+            if components.count == 3, components[0] == "Payload", components[1].hasSuffix(".app"), components[2] == "Info.plist" {
+                return String(components[1].dropLast(4))
             }
         }
         try ensureFailed("could not read bundle name")

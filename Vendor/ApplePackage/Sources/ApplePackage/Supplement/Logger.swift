@@ -51,7 +51,8 @@ public enum APLogger {
             msg += " (\(bodySize) bytes)"
         }
         for (name, value) in headers {
-            msg += "\n    \(name): \(value)"
+            let safeValue = ["cookie", "token", "password", "signature"].contains { name.lowercased().contains($0) } ? "<redacted>" : value
+            msg += "\n    \(name): \(safeValue)"
         }
         debug(msg)
     }

@@ -20,6 +20,10 @@ let logger = {
     return logger
 }()
 
+ApplePackage.Configuration.kbsyncProvider = { device, dsid in
+    try await LocalSAPAuthenticator.generateKBSync(device: device, dsid: dsid)
+}
+
 APLogger.verbose = true
 APLogger.logger = Logger(label: "wiki.qaq.asspp.applepackage")
 

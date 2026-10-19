@@ -2,6 +2,8 @@ name: Local SAP iOS App
 run-name: Test IPA · ${{ github.ref_name }} · ${{ github.run_number }}
 on:
   workflow_dispatch:
+  push:
+    branches: [main]
 permissions:
   contents: read
 concurrency:

@@ -1,37 +1,30 @@
-# Local SAP feasibility experiment
+# Local SAP for native iOS
 
-The 4.2.x releases use the remote authentication settings. This 4.3 branch probes
-a local alternative, without changing the released login implementation.
+The native app embeds the SAP modules from ipatool **v2.7.0**, pinned to
+`4484b55d366e177ae6c89758c61588712c572fad`. Swift calls an exported C/Go
+bridge for login action signatures and account/device-bound download kbsync.
+No remote AssppWeb signing service is required.
 
-Shared fixes from 4.2.2.3 are merged here: storefront suffix parsing, token
-rotation with a verification-code field, all-account download selection, and
-version display from build settings. Version 4.3 identifies development of the
-local implementation; it does not mean local SAP authentication is complete.
+The upstream desktop Unicorn loader is replaced with a static cgo adapter to
+Naville/unicorn `53471ef9cf480fab094bf13db3e5d2f9e2c30dc5`, with
+`UNICORN_INTERPRETER=ON`. Apple x86-64 code runs in the interpreter; no JIT is
+introduced. Hash-validated Apple assets and StoreAgent are loaded from Apple
+and cached inside the sandbox supplied by Swift.
 
-ipatool currently dynamically loads a desktop Unicorn library and executes an
-x86-64 Apple guest. An iOS static Go archive alone does not replace that loader
-or remove the default engine's JIT requirements.
-
-The workflow pins Naville/unicorn feature/tci at
-53471ef9cf480fab094bf13db3e5d2f9e2c30dc5, enables UNICORN_INTERPRETER,
-runs an x86-64 instruction smoke test on macOS, and cross-compiles an arm64
-iOS 16 static XCFramework. The fork's translate-all.c uses RW rather than RWX
-code buffers in interpreter mode. Source: https://github.com/Naville/unicorn/tree/53471ef9cf480fab094bf13db3e5d2f9e2c30dc5
-
-The Local SAP iOS App workflow now builds the static cgo adapter and exported
-signing bridge, tests the machine and real Apple SAP handshake with dummy data,
-cross-compiles both libraries, and links them into the iOS application.
-AuthenticationService on this branch calls LocalSAPAuthenticator, never the
-remote service. First use downloads hash-validated SAP assets directly from
-Apple into the app sandbox's cache. No user credentials are used by CI.
-
-Build locally on macOS with Go 1.25+ and Xcode:
+Build with Xcode, Go 1.25+ and CMake 3.31:
 
 ```sh
 bash Experiments/LocalSAP/build.sh /absolute/path/to/sap-libs
 ```
 
-Set LOCAL_SAP_LIBRARY_DIR to that directory in Xcode build settings, or export
-it when invoking the CI build script. This branch currently builds iOS arm64
-only. A successful CI build still requires physical-device login/2FA/download
-verification before treating the local implementation as production-ready.
+Set `LOCAL_SAP_LIBRARY_DIR` to the output directory when building the app.
+The output contains `libasspp-sap.a`, `libasspp-sap.h`, and `libunicorn.a` for
+iOS arm64. The compiler wrapper keeps target detection correct on Intel and
+Apple silicon build hosts.
+
+The script runs upstream machine, image and archive tests; sandbox-cache and
+bridge-input tests; a real Apple SAP handshake with dummy input; and kbsync
+generation with dummy identifiers. These tests do not use an Apple account.
+Physical-device login, 2FA and downloads still require manual verification.
+
+See [alignment details](../../Resources/Document/IPATOOL_2_7_ALIGNMENT.md).

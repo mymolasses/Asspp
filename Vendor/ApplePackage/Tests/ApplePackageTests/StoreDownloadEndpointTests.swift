@@ -17,10 +17,10 @@ final class StoreDownloadEndpointTests: XCTestCase {
         XCTAssertEqual(components.queryItems?.first(where: { $0.name == "guid" })?.value, "aabbccddeeff")
     }
 
-    func testUpdateProductUsesExternalVersionIdPayloadKey() {
+    func testUpdateProductUsesAppExtVrsIdPayloadKey() {
         let endpoint = StoreDownloadEndpoint.updateProduct(
             URL(string: "https://downloaddispatch.itunes.apple.com/up/updateProduct")!
         )
-        XCTAssertEqual(endpoint.externalVersionIDKey, "externalVersionId")
+        XCTAssertEqual(endpoint.externalVersionIDKey, "appExtVrsId")
     }
 }

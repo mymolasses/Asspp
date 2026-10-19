@@ -38,7 +38,7 @@ final class HistoricalDateTests: XCTestCase {
         let base = URL(string: "https://buy.itunes.apple.com/WebObjects/MZFinance.woa/wa/authenticate?guid=ABC")!
         let relative = try XCTUnwrap(Authenticator.redirectURL(status: 302, location: "/WebObjects/MZFinance.woa/wa/authenticate?guid=ABC", from: base))
         XCTAssertEqual(relative, base)
-        XCTAssertEqual(try Authenticator.redirectURL(status: 307, location: "https://p25-buy.itunes.apple.com/auth", from: base)?.host, "p25-buy.itunes.apple.com")
+        XCTAssertEqual(try Authenticator.redirectURL(status: 307, location: "https://p25-buy.itunes.apple.com/WebObjects/MZFinance.woa/wa/authenticate/", from: base)?.host, "p25-buy.itunes.apple.com")
         XCTAssertNil(try Authenticator.redirectURL(status: 200, location: nil, from: base))
         for location in [nil, "", "http://buy.itunes.apple.com/auth", "https://itunes.apple.com.evil.invalid/auth", "https://user:pass@buy.itunes.apple.com/auth", "https://buy.itunes.apple.com:444/auth"] as [String?] {
             XCTAssertThrowsError(try Authenticator.redirectURL(status: 302, location: location, from: base))
