@@ -8,7 +8,6 @@
 import ApplePackage
 import Combine
 import Foundation
-import OrderedCollections
 
 @MainActor
 class AppPackageArchive: ObservableObject {
@@ -22,28 +21,43 @@ class AppPackageArchive: ObservableObject {
     // of this screen: navigation must not synchronously decode/encode disk caches.
     // Old cache files are left untouched, but are no longer read on this path.
     @Published var versionIdentifiers: [VersionIdentifier] = []
-    @Published var versionItems: OrderedDictionary<VersionIdentifier, VersionMetadata> = [:]
-
-    var isVersionItemsFullyLoaded: Bool {
-        return versionIdentifiers.allSatisfy { versionItems[$0] != nil }
-    }
+    @Published var versionItems: [VersionIdentifier: VersionMetadata] = [:]
 
     @Published var error: String?
     @Published var loading = false
     @Published var shouldDismiss = false
-    private var attemptedVersionIDs: Set<String> = []
+    @Published private(set) var loadingVersionIDs: Set<String> = []
+    @Published private(set) var versionErrors: [String: String] = [:]
+    private var generation = UUID()
 
-    init(accountID: String?, region: String, package: AppStore.AppPackage) {
+    typealias ListVersions = (String, Software) async throws -> [String]
+    typealias LoadVersion = (String, Software, String) async throws -> VersionMetadata
+    private let listVersions: ListVersions
+    private let loadVersion: LoadVersion
+
+    init(accountID: String?, region: String, package: AppStore.AppPackage,
+         listVersions: @escaping ListVersions = { accountID, software in
+             try await AppStore.this.withAccount(id: accountID) { user in
+                 try await VersionFinder.list(account: &user.account, bundleIdentifier: software.bundleID, software: software)
+             }
+         },
+         loadVersion: @escaping LoadVersion = { accountID, software, versionID in
+             try await AppStore.this.withAccount(id: accountID) { user in
+                 try await VersionLookup.getVersionMetadata(account: &user.account, app: software, versionID: versionID)
+             }
+         }) {
         accountIdentifier = accountID
         self.region = region
         self.package = package
-
+        self.listVersions = listVersions
+        self.loadVersion = loadVersion
     }
 
     func package(for externalVersion: String) -> AppStore.AppPackage? {
         if let metadata = versionItems[externalVersion] {
             var pkg = package
             pkg.software.version = metadata.displayVersion
+            pkg.releaseDate = metadata.releaseDate
             pkg.externalVersionID = externalVersion
             return pkg
         } else {
@@ -51,86 +65,52 @@ class AppPackageArchive: ObservableObject {
         }
     }
 
-    func clearVersionItems() {
-        assert(!loading)
-        error = nil
+    func populateVersionIdentifiers() {
+        guard let accountIdentifier, !loading else { return }
+        // Refresh invalidates in-flight details so an old request cannot refill
+        // the refreshed list or clear a newer row's loading indicator.
+        let requestGeneration = UUID()
+        generation = requestGeneration
         versionIdentifiers = []
         versionItems = [:]
-        attemptedVersionIDs = []
-    }
-
-    func populateVersionIdentifiers(_ completion: (() async -> Void)? = nil) {
-        guard let accountIdentifier, !loading else { return }
-        let bundleID = package.software.bundleID
-        let software = package.software
+        loadingVersionIDs = []
+        versionErrors = [:]
         loading = true
         error = nil
+        let software = package.software
 
         Task {
             do {
-                let versions = try await AppStore.this.withAccount(id: accountIdentifier) { userAccount in
-                    try await VersionFinder.list(account: &userAccount.account, bundleIdentifier: bundleID, software: software)
-                }
+                let versions = try await listVersions(accountIdentifier, software)
+                guard generation == requestGeneration else { return }
                 var seen = Set<String>()
-                self.versionIdentifiers = versions.reversed().filter { seen.insert($0).inserted }
-                var retained: OrderedDictionary<VersionIdentifier, VersionMetadata> = [:]
-                for id in self.versionIdentifiers {
-                    if let metadata = self.versionItems[id] { retained[id] = metadata }
-                }
-                self.versionItems = retained
-                self.attemptedVersionIDs = []
+                versionIdentifiers = versions.reversed().filter { seen.insert($0).inserted }
             } catch {
-                logger.warning("history: list request failed: \(error.localizedDescription)")
+                guard generation == requestGeneration else { return }
                 self.error = error.localizedDescription
             }
-            self.loading = false
-            await completion?()
-        }
-    }
-
-    func populateNextVersionItems(count: Int = 3) {
-        guard let accountIdentifier, !loading, !isVersionItemsFullyLoaded else { return }
-        loading = true
-        error = nil
-
-        Task {
-                let missing = self.versionIdentifiers.filter { self.versionItems[$0] == nil }
-                let unattempted = missing.filter { !self.attemptedVersionIDs.contains($0) }
-                let pending = (unattempted.isEmpty ? missing : unattempted).prefix(max(0, count))
-                var failures: [String] = []
-                for version in pending {
-                    self.attemptedVersionIDs.insert(version)
-                    let app = self.package.software
-                    do {
-                        let metadata = try await AppStore.this.withAccount(id: accountIdentifier) { userAccount in
-                            try await VersionLookup.getVersionMetadata(account: &userAccount.account, app: app, versionID: version)
-                        }
-                        self.versionItems[version] = metadata
-                    } catch {
-                        failures.append("\(version): \(error.localizedDescription)")
-                    }
-                }
-                self.error = failures.isEmpty ? nil : failures.joined(separator: "\n")
-            self.loading = false
+            loading = false
         }
     }
 
     func populateVersionItem(for versionID: String) {
-        guard let accountIdentifier, !loading, versionIdentifiers.contains(versionID), versionItems[versionID] == nil else { return }
-        loading = true
-        error = nil
+        guard let accountIdentifier, !loading, versionIdentifiers.contains(versionID),
+              versionItems[versionID] == nil, !loadingVersionIDs.contains(versionID) else { return }
+        let requestGeneration = generation
+        let software = package.software
+        loadingVersionIDs.insert(versionID)
+        versionErrors[versionID] = nil
 
         Task {
             do {
-                let app = self.package.software
-                let metadata = try await AppStore.this.withAccount(id: accountIdentifier) { userAccount in
-                    try await VersionLookup.getVersionMetadata(account: &userAccount.account, app: app, versionID: versionID)
-                }
-                self.versionItems[versionID] = metadata
+                let metadata = try await loadVersion(accountIdentifier, software, versionID)
+                guard generation == requestGeneration else { return }
+                versionItems[versionID] = metadata
             } catch {
-                self.error = error.localizedDescription
+                guard generation == requestGeneration else { return }
+                versionErrors[versionID] = error.localizedDescription
             }
-            self.loading = false
+            loadingVersionIDs.remove(versionID)
         }
     }
 }

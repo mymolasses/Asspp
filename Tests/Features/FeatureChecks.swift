@@ -95,6 +95,7 @@ struct FeatureChecks {
             result.externalVersionID = externalID
             return result
         }
+        checks += try await checkHistoryLoading(package: package(version: "1.10"))
         let currentPackage = package(version: "1.10")
         let oldPackage = package(version: "1.9")
         check(currentPackage.downloadIntent(comparedTo: []) == .download, "First download action")

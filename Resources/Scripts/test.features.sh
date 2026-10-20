@@ -10,11 +10,13 @@ for source in \
     Asspp/Backend/AppStore/AccountTransfer.swift \
     Asspp/Backend/AppStore/UserAccount.swift \
     Asspp/Backend/AppStore/AppPackage.swift \
+    Asspp/Backend/AppStore/AppPackageArchive.swift \
     Asspp/Backend/Downloader/LocalIPA.swift \
     Asspp/Backend/Downloader/Downloads+LocalIPA.swift \
     Asspp/Backend/Downloader/PackageManifest.swift \
     Asspp/Backend/Downloader/PackageState.swift \
     Tests/Features/TestHost.swift \
+    Tests/Features/HistoryChecks.swift \
     Tests/Features/FeatureChecks.swift; do
     cp "$repo/$source" "$stage/Sources/AssppFeatureChecks/"
 done

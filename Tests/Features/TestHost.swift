@@ -5,6 +5,10 @@ import Foundation
 
 @MainActor
 class AppStore {
+    static let this = AppStore()
+    nonisolated func withAccount<T>(id: String, _ body: (inout UserAccount) async throws -> T) async throws -> T {
+        throw NSError(domain: "FeatureChecks.UnexpectedNetworkAccess", code: 1)
+    }
     var accounts: [UserAccount] = []
     var verifiedAccountIDs: Set<String> = []
     var sessionErrors: [String: String] = [:]

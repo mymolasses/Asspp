@@ -1233,6 +1233,22 @@
         }
       }
     },
+    "Loading Details..." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Loading Details..."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在加载版本详情…"
+          }
+        }
+      }
+    },
     "Local IPA" : {
       "localizations" : {
         "en" : {

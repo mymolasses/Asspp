@@ -42,9 +42,37 @@ struct ProductHistoryView: View {
                 Text(vm.error ?? "暂无历史版本，点击右上角刷新重试。")
             }
             ForEach(Array(vm.versionIdentifiers.prefix(visibleCount)), id: \.self) { key in
-                if let aid = vm.accountIdentifier, let pkg = vm.package(for: key) {
-                    Menu {
-                        Button("Download \(pkg.software.version)") {
+                HStack(spacing: 16) {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("ID: \(key)")
+                            .font(.subheadline.monospacedDigit())
+                            .foregroundStyle(.secondary)
+                            .textSelection(.enabled)
+                        if let metadata = vm.versionItems[key] {
+                            Text(metadata.displayVersion)
+                                .font(.headline)
+                            Text(metadata.releaseDate, format: .dateTime.year().month().day())
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        } else if vm.loadingVersionIDs.contains(key) {
+                            ProgressView()
+                                .controlSize(.small)
+                                .accessibilityLabel(Text("Loading Details..."))
+                        } else {
+                            if let error = vm.versionErrors[key] {
+                                Text(error)
+                                    .font(.caption)
+                                    .foregroundStyle(.red)
+                            }
+                            Button("View Details") {
+                                vm.populateVersionItem(for: key)
+                            }
+                            .buttonStyle(.borderless)
+                        }
+                    }
+                    Spacer(minLength: 0)
+                    if let aid = vm.accountIdentifier, let pkg = vm.package(for: key) {
+                        Button("Download") {
                             Task {
                                 do {
                                     try await Downloads.this.startDownload(for: pkg, accountID: aid)
@@ -53,25 +81,10 @@ struct ProductHistoryView: View {
                                 }
                             }
                         }
-                    } label: {
-                        HStack {
-                            Text(pkg.software.version)
-                                .foregroundStyle(.accent)
-                            Spacer()
-                        }
-                        .contentShape(Rectangle())
-                    }
-                } else {
-                    Button {
-                        vm.populateVersionItem(for: key)
-                    } label: {
-                        HStack {
-                            Text(key).foregroundStyle(.secondary)
-                            Spacer()
-                        }
-                        .contentShape(Rectangle())
+                        .buttonStyle(.borderless)
                     }
                 }
+                .padding(.vertical, 4)
             }
             if visibleCount < vm.versionIdentifiers.count {
                 Button("显示更多历史版本") { visibleCount += 50 }
@@ -87,25 +100,13 @@ struct ProductHistoryView: View {
         }
         .toolbar {
             ToolbarItem(placement: toolbarPlacement) {
-                Menu {
-                    Button {
-                        vm.populateNextVersionItems()
-                    } label: {
-                        Label("Load More", systemImage: "arrow.down.circle")
-                    }
-                    .disabled(vm.isVersionItemsFullyLoaded)
-                    Divider()
-                    Button(role: .destructive) {
-                        vm.clearVersionItems()
-                        vm.populateVersionIdentifiers {
-                            await MainActor.run { vm.populateNextVersionItems() }
-                        }
-                    } label: {
-                        Label("Refresh", systemImage: "arrow.clockwise.circle")
-                    }
+                Button {
+                    visibleCount = 50
+                    vm.populateVersionIdentifiers()
                 } label: {
-                    Image(systemName: "ellipsis.circle")
+                    Image(systemName: "arrow.clockwise.circle")
                 }
+                .accessibilityLabel(Text("Refresh"))
                 .disabled(vm.loading) // just make sure
                 .opacity(vm.loading ? 0 : 1)
                 .overlay { // using overlay to maintain same size while loading
@@ -136,11 +137,7 @@ struct ProductHistoryView: View {
             guard !started else { return }
             started = true
             logger.info("history: destination rendered")
-            // Allow navigation to render before starting the request chain.
-            do { try await Task.sleep(nanoseconds: 200_000_000) } catch { started = false; return }
-            vm.populateVersionIdentifiers {
-                await MainActor.run { vm.populateNextVersionItems() }
-            }
+            vm.populateVersionIdentifiers()
         }
     }
 
